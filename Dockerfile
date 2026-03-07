@@ -10,12 +10,12 @@ FROM node:22-bookworm@sha256:cd7bcd2e7a1e6f72052feb023c7f6b722205d3fcab7bbcbd2d1
 ARG OPENCLAW_EXTENSIONS
 COPY extensions /tmp/extensions
 RUN mkdir -p /out && \
-    for ext in $OPENCLAW_EXTENSIONS; do \
-      if [ -f "/tmp/extensions/$ext/package.json" ]; then \
-        mkdir -p "/out/$ext" && \
-        cp "/tmp/extensions/$ext/package.json" "/out/$ext/package.json"; \
-      fi; \
-    done
+  for ext in $OPENCLAW_EXTENSIONS; do \
+  if [ -f "/tmp/extensions/$ext/package.json" ]; then \
+  mkdir -p "/out/$ext" && \
+  cp "/tmp/extensions/$ext/package.json" "/out/$ext/package.json"; \
+  fi; \
+  done
 
 FROM node:22-bookworm@sha256:cd7bcd2e7a1e6f72052feb023c7f6b722205d3fcab7bbcbd2d1bfdab10b1e935
 
@@ -38,16 +38,80 @@ ENV PATH="/root/.bun/bin:${PATH}"
 
 RUN corepack enable
 
+# ==================================================
+# Install required APT packages (for Homebrew support)
+# ==================================================
+RUN apt-get update && \
+  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+  build-essential \
+  procps \
+  curl \
+  file \
+  git \
+  python3 \
+  ca-certificates \
+  lsb-release \
+  gnupg \
+  && apt-get clean && \
+  rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
+
+# ==================================================
+# Install Homebrew (Linuxbrew) as node user
+# ==================================================
+RUN mkdir -p /home/linuxbrew && \
+  chown -R node:node /home/linuxbrew
+
+USER node
+SHELL ["/bin/bash", "-lc"]
+
+RUN NONINTERACTIVE=1 CI=1 \
+  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" && \
+  eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)" && \
+  brew install go
+
+# Expose brew globally
+USER root
+RUN ln -sf /home/linuxbrew/.linuxbrew/bin/brew /usr/local/bin/brew
+
+# Required brew environment variables
+ENV HOMEBREW_PREFIX="/home/linuxbrew/.linuxbrew"
+ENV HOMEBREW_CELLAR="/home/linuxbrew/.linuxbrew/Cellar"
+ENV HOMEBREW_REPOSITORY="/home/linuxbrew/.linuxbrew/Homebrew"
+ENV PATH="/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:${PATH}"
+
+# ==================================================
+# Install Miniconda for Python environment management
+# ==================================================
+RUN mkdir -p /home/node/.openclaw/workspace && \
+  curl -fsSL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -o /tmp/miniconda.sh && \
+  bash /tmp/miniconda.sh -b -p /home/node/.openclaw/workspace/miniconda3 && \
+  rm /tmp/miniconda.sh
+
+# Configure Miniconda environment variables
+ENV CONDA_HOME="/home/node/.openclaw/workspace/miniconda3"
+ENV PATH="${CONDA_HOME}/bin:${PATH}"
+
+# Initialize Conda for bash shell
+RUN ${CONDA_HOME}/bin/conda init bash && \
+  ${CONDA_HOME}/bin/conda config --set auto_activate_base false
+
+# Accept Anaconda Terms of Service for default channels
+RUN ${CONDA_HOME}/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main && \
+  ${CONDA_HOME}/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+
+# Create a base environment for OpenClaw
+RUN ${CONDA_HOME}/bin/conda create -n openclaw python=3.11 -y
+
 WORKDIR /app
 RUN chown node:node /app
 
 ARG OPENCLAW_DOCKER_APT_PACKAGES=""
 RUN if [ -n "$OPENCLAW_DOCKER_APT_PACKAGES" ]; then \
-      apt-get update && \
-      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $OPENCLAW_DOCKER_APT_PACKAGES && \
-      apt-get clean && \
-      rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*; \
-    fi
+  apt-get update && \
+  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $OPENCLAW_DOCKER_APT_PACKAGES && \
+  apt-get clean && \
+  rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*; \
+  fi
 
 COPY --chown=node:node package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY --chown=node:node ui/package.json ./ui/package.json
@@ -68,15 +132,15 @@ RUN NODE_OPTIONS=--max-old-space-size=2048 pnpm install --frozen-lockfile
 USER root
 ARG OPENCLAW_INSTALL_BROWSER=""
 RUN if [ -n "$OPENCLAW_INSTALL_BROWSER" ]; then \
-      apt-get update && \
-      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends xvfb && \
-      mkdir -p /home/node/.cache/ms-playwright && \
-      PLAYWRIGHT_BROWSERS_PATH=/home/node/.cache/ms-playwright \
-      node /app/node_modules/playwright-core/cli.js install --with-deps chromium && \
-      chown -R node:node /home/node/.cache/ms-playwright && \
-      apt-get clean && \
-      rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*; \
-    fi
+  apt-get update && \
+  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends xvfb && \
+  mkdir -p /home/node/.cache/ms-playwright && \
+  PLAYWRIGHT_BROWSERS_PATH=/home/node/.cache/ms-playwright \
+  node /app/node_modules/playwright-core/cli.js install --with-deps chromium && \
+  chown -R node:node /home/node/.cache/ms-playwright && \
+  apt-get clean && \
+  rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*; \
+  fi
 
 # Optionally install Docker CLI for sandbox container management.
 # Build with: docker build --build-arg OPENCLAW_INSTALL_DOCKER_CLI=1 ...
@@ -85,41 +149,41 @@ RUN if [ -n "$OPENCLAW_INSTALL_BROWSER" ]; then \
 ARG OPENCLAW_INSTALL_DOCKER_CLI=""
 ARG OPENCLAW_DOCKER_GPG_FINGERPRINT="9DC858229FC7DD38854AE2D88D81803C0EBFCD88"
 RUN if [ -n "$OPENCLAW_INSTALL_DOCKER_CLI" ]; then \
-      apt-get update && \
-      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        ca-certificates curl gnupg && \
-      install -m 0755 -d /etc/apt/keyrings && \
-      # Verify Docker apt signing key fingerprint before trusting it as a root key.
-      # Update OPENCLAW_DOCKER_GPG_FINGERPRINT when Docker rotates release keys.
-      curl -fsSL https://download.docker.com/linux/debian/gpg -o /tmp/docker.gpg.asc && \
-      expected_fingerprint="$(printf '%s' "$OPENCLAW_DOCKER_GPG_FINGERPRINT" | tr '[:lower:]' '[:upper:]' | tr -d '[:space:]')" && \
-      actual_fingerprint="$(gpg --batch --show-keys --with-colons /tmp/docker.gpg.asc | awk -F: '$1 == "fpr" { print toupper($10); exit }')" && \
-      if [ -z "$actual_fingerprint" ] || [ "$actual_fingerprint" != "$expected_fingerprint" ]; then \
-        echo "ERROR: Docker apt key fingerprint mismatch (expected $expected_fingerprint, got ${actual_fingerprint:-<empty>})" >&2; \
-        exit 1; \
-      fi && \
-      gpg --dearmor -o /etc/apt/keyrings/docker.gpg /tmp/docker.gpg.asc && \
-      rm -f /tmp/docker.gpg.asc && \
-      chmod a+r /etc/apt/keyrings/docker.gpg && \
-      printf 'deb [arch=%s signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian bookworm stable\n' \
-        "$(dpkg --print-architecture)" > /etc/apt/sources.list.d/docker.list && \
-      apt-get update && \
-      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        docker-ce-cli docker-compose-plugin && \
-      apt-get clean && \
-      rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*; \
-    fi
+  apt-get update && \
+  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+  ca-certificates curl gnupg && \
+  install -m 0755 -d /etc/apt/keyrings && \
+  # Verify Docker apt signing key fingerprint before trusting it as a root key.
+  # Update OPENCLAW_DOCKER_GPG_FINGERPRINT when Docker rotates release keys.
+  curl -fsSL https://download.docker.com/linux/debian/gpg -o /tmp/docker.gpg.asc && \
+  expected_fingerprint="$(printf '%s' "$OPENCLAW_DOCKER_GPG_FINGERPRINT" | tr '[:lower:]' '[:upper:]' | tr -d '[:space:]')" && \
+  actual_fingerprint="$(gpg --batch --show-keys --with-colons /tmp/docker.gpg.asc | awk -F: '$1 == "fpr" { print toupper($10); exit }')" && \
+  if [ -z "$actual_fingerprint" ] || [ "$actual_fingerprint" != "$expected_fingerprint" ]; then \
+  echo "ERROR: Docker apt key fingerprint mismatch (expected $expected_fingerprint, got ${actual_fingerprint:-<empty>})" >&2; \
+  exit 1; \
+  fi && \
+  gpg --dearmor -o /etc/apt/keyrings/docker.gpg /tmp/docker.gpg.asc && \
+  rm -f /tmp/docker.gpg.asc && \
+  chmod a+r /etc/apt/keyrings/docker.gpg && \
+  printf 'deb [arch=%s signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian bookworm stable\n' \
+  "$(dpkg --print-architecture)" > /etc/apt/sources.list.d/docker.list && \
+  apt-get update && \
+  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+  docker-ce-cli docker-compose-plugin && \
+  apt-get clean && \
+  rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*; \
+  fi
 
 USER node
 COPY --chown=node:node . .
 # Normalize copied plugin/agent paths so plugin safety checks do not reject
 # world-writable directories inherited from source file modes.
 RUN for dir in /app/extensions /app/.agent /app/.agents; do \
-      if [ -d "$dir" ]; then \
-        find "$dir" -type d -exec chmod 755 {} +; \
-        find "$dir" -type f -exec chmod 644 {} +; \
-      fi; \
-    done
+  if [ -d "$dir" ]; then \
+  find "$dir" -type d -exec chmod 755 {} +; \
+  find "$dir" -type f -exec chmod 644 {} +; \
+  fi; \
+  done
 RUN pnpm build
 # Force pnpm for UI build (Bun may fail on ARM/Synology architectures)
 ENV OPENCLAW_PREFER_PNPM=1
@@ -128,13 +192,24 @@ RUN pnpm ui:build
 # Expose the CLI binary without requiring npm global writes as non-root.
 USER root
 RUN ln -sf /app/openclaw.mjs /usr/local/bin/openclaw \
- && chmod 755 /app/openclaw.mjs
+  && chmod 755 /app/openclaw.mjs
+
+# ==================================================
+# Fix permissions for runtime
+# ==================================================
+RUN chown -R node:node /app && \
+  chown -R node:node /home/linuxbrew && \
+  chown -R node:node /home/node/.openclaw/workspace
+
+# Allow node user to install global npm packages (ClawHub skills, plugins, etc.)
+RUN mkdir -p /usr/local/lib/node_modules /usr/local/bin && \
+  chown -R node:node /usr/local/lib/node_modules /usr/local/bin
 
 ENV NODE_ENV=production
 
+# ==================================================
 # Security hardening: Run as non-root user
-# The node:22-bookworm image includes a 'node' user (uid 1000)
-# This reduces the attack surface by preventing container escape via root privileges
+# ==================================================
 USER node
 
 # Start gateway server with default config.
@@ -151,4 +226,4 @@ USER node
 # For external access from host/ingress, override bind to "lan" and set auth.
 HEALTHCHECK --interval=3m --timeout=10s --start-period=15s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:18789/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
-CMD ["node", "openclaw.mjs", "gateway", "--allow-unconfigured"]
+D ["node", "openclaw.mjs", "gateway", "--allow-unconfigured"]

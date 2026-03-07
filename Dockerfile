@@ -93,16 +93,13 @@ ENV PATH="${CONDA_HOME}/bin:${PATH}"
 ENV CONDA_DEFAULT_ENV="base"
 ENV CONDA_PREFIX="${CONDA_HOME}"
 
-# Initialize Conda for bash shell
-RUN ${CONDA_HOME}/bin/conda init bash && \
-  ${CONDA_HOME}/bin/conda config --set auto_activate_base false
-
 # Accept Anaconda Terms of Service for default channels
 RUN ${CONDA_HOME}/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main && \
   ${CONDA_HOME}/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
 
 # Create a base environment for OpenClaw
-RUN ${CONDA_HOME}/bin/conda create -n openclaw python=3.11 -y
+RUN ${CONDA_HOME}/bin/conda create -n openclaw python=3.11 -y && \
+  ${CONDA_HOME}/bin/conda clean -afy
 
 WORKDIR /app
 RUN chown node:node /app

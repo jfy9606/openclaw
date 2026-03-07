@@ -90,6 +90,8 @@ RUN mkdir -p /home/node/.openclaw/workspace && \
 # Configure Miniconda environment variables
 ENV CONDA_HOME="/home/node/.openclaw/workspace/miniconda3"
 ENV PATH="${CONDA_HOME}/bin:${PATH}"
+ENV CONDA_DEFAULT_ENV="base"
+ENV CONDA_PREFIX="${CONDA_HOME}"
 
 # Initialize Conda for bash shell
 RUN ${CONDA_HOME}/bin/conda init bash && \
@@ -197,8 +199,8 @@ RUN ln -sf /app/openclaw.mjs /usr/local/bin/openclaw \
 # ==================================================
 # Fix permissions for runtime
 # ==================================================
-RUN chown -R node:node /app && \
-  chown -R node:node /home/linuxbrew && \
+# Only fix permissions for files/directories created by root
+RUN chown node:node /app/openclaw.mjs && \
   chown -R node:node /home/node/.openclaw/workspace
 
 # Allow node user to install global npm packages (ClawHub skills, plugins, etc.)

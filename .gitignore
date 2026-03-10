@@ -1,4 +1,5 @@
-.openclaw
+.openclaw/openclaw.*
+.openclaw/workspace/*
 node_modules
 **/node_modules/
 .env

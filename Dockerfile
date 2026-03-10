@@ -132,12 +132,16 @@ RUN --mount=type=cache,id=openclaw-pnpm-store,target=/root/.local/share/pnpm/sto
 COPY . .
 # Normalize extension paths now so runtime COPY preserves safe modes
 # without adding a second full extensions layer.
+USER root
 RUN for dir in /app/extensions /app/.agent /app/.agents; do \
       if [ -d "$dir" ]; then \
         find "$dir" -type d -exec chmod 755 {} +; \
         find "$dir" -type f -exec chmod 644 {} +; \
       fi; \
     done
+# Ensure all files in /app are owned by node user for build commands
+RUN chown -R node:node /app
+USER node
 # A2UI bundle may fail under QEMU cross-compilation (e.g. building amd64
 # on Apple Silicon). CI builds natively per-arch so this is a no-op there.
 # Stub it so local cross-arch builds still succeed.
@@ -185,8 +189,74 @@ RUN --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,shar
     --mount=type=cache,id=openclaw-bookworm-apt-lists,target=/var/lib/apt,sharing=locked \
     apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-      procps hostname curl git openssl
+      procps hostname curl git openssl python3
 RUN chown node:node /app
+
+# ==================================================
+# Install Homebrew (Linuxbrew) for runtime
+# ==================================================
+RUN mkdir -p /home/linuxbrew && \
+    chown -R node:node /home/linuxbrew
+
+USER node
+SHELL ["/bin/bash", "-lc"]
+
+RUN NONINTERACTIVE=1 CI=1 \
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" && \
+    eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)" && \
+    brew install go
+
+# Expose brew globally
+USER root
+RUN ln -sf /home/linuxbrew/.linuxbrew/bin/brew /usr/local/bin/brew
+
+# Required brew environment variables
+ENV HOMEBREW_PREFIX="/home/linuxbrew/.linuxbrew"
+ENV HOMEBREW_CELLAR="/home/linuxbrew/.linuxbrew/Cellar"
+ENV HOMEBREW_REPOSITORY="/home/linuxbrew/.linuxbrew/Homebrew"
+ENV PATH="/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:${PATH}"
+
+# Fix Homebrew path issues - create brew.sh wrapper script
+RUN mkdir -p /home/linuxbrew/.linuxbrew/Library/Homebrew && \
+    echo '#!/bin/bash' > /home/linuxbrew/.linuxbrew/Library/Homebrew/brew.sh && \
+    echo 'exec /home/linuxbrew/.linuxbrew/bin/brew "$@"' >> /home/linuxbrew/.linuxbrew/Library/Homebrew/brew.sh && \
+    chmod +x /home/linuxbrew/.linuxbrew/Library/Homebrew/brew.sh && \
+    chown -R node:node /home/linuxbrew/.linuxbrew
+
+# ==================================================
+# Install Miniconda for Python environment management (runtime)
+# ==================================================
+RUN curl -fsSL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -o /tmp/miniconda.sh && \
+    bash /tmp/miniconda.sh -b -p /opt/conda && \
+    rm /tmp/miniconda.sh
+
+# Create persistent directories for Conda environments and packages
+RUN mkdir -p /home/node/.openclaw/workspace/conda_envs && \
+    mkdir -p /home/node/.openclaw/workspace/conda_pkgs
+
+# Configure Miniconda environment variables
+ENV CONDA_HOME="/opt/conda"
+ENV PATH="${CONDA_HOME}/bin:${PATH}"
+ENV CONDA_DEFAULT_ENV="base"
+ENV CONDA_PREFIX="${CONDA_HOME}"
+ENV CONDA_ENVS_DIRS="/home/node/.openclaw/workspace/conda_envs"
+ENV CONDA_PKGS_DIRS="/home/node/.openclaw/workspace/conda_pkgs"
+
+# Redirect conda envs and pkgs to workspace (persistent storage)
+RUN ln -s /home/node/.openclaw/workspace/conda_envs /opt/conda/envs && \
+    ln -s /home/node/.openclaw/workspace/conda_pkgs /opt/conda/pkgs
+
+# Initialize Conda for bash shell
+RUN ${CONDA_HOME}/bin/conda init bash && \
+    ${CONDA_HOME}/bin/conda config --set auto_activate_base false
+
+# Accept Anaconda Terms of Service for default channels
+RUN ${CONDA_HOME}/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main && \
+    ${CONDA_HOME}/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+
+# Create a base environment for OpenClaw
+RUN ${CONDA_HOME}/bin/conda create -n openclaw python=3.11 -y && \
+    ${CONDA_HOME}/bin/conda clean -afy
 COPY --from=runtime-assets --chown=node:node /app/dist ./dist
 COPY --from=runtime-assets --chown=node:node /app/node_modules ./node_modules
 COPY --from=runtime-assets --chown=node:node /app/package.json .
@@ -245,7 +315,7 @@ RUN --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,shar
       expected_fingerprint="$(printf '%s' "$OPENCLAW_DOCKER_GPG_FINGERPRINT" | tr '[:lower:]' '[:upper:]' | tr -d '[:space:]')" && \
       actual_fingerprint="$(gpg --batch --show-keys --with-colons /tmp/docker.gpg.asc | awk -F: '$1 == "fpr" { print toupper($10); exit }')" && \
       if [ -z "$actual_fingerprint" ] || [ "$actual_fingerprint" != "$expected_fingerprint" ]; then \
-        echo "ERROR: Docker apt key fingerprint mismatch (expected $expected_fingerprint, got ${actual_fingerprint:-`empty>})" >&2; \
+        echo "ERROR: Docker apt key fingerprint mismatch (expected $expected_fingerprint, got ${actual_fingerprint:-<empty>})" >&2; \
         exit 1; \
       fi && \
       gpg --dearmor -o /etc/apt/keyrings/docker.gpg /tmp/docker.gpg.asc && \
@@ -265,8 +335,8 @@ RUN ln -sf /app/openclaw.mjs /usr/local/bin/openclaw \
 # ==================================================
 # Only fix permissions for files/directories created by root
 RUN chown node:node /app/openclaw.mjs && \
-    chown -R node:node /opt/conda && \
-    chown -R node:node /home/node/.openclaw/workspace
+    if [ -d "/opt/conda" ]; then chown -R node:node /opt/conda; fi && \
+    if [ -d "/home/node/.openclaw/workspace" ]; then chown -R node:node /home/node/.openclaw/workspace; fi
 # Allow node user to install global npm packages (ClawHub skills, plugins, etc.)
 RUN mkdir -p /usr/local/lib/node_modules /usr/local/bin && \
     chown -R node:node /usr/local/lib/node_modules /usr/local/bin

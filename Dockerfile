@@ -68,6 +68,8 @@ RUN NONINTERACTIVE=1 CI=1 \
   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" && \
   eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)" && \
   brew install go
+# Configure Go proxy for faster downloads in China
+ENV GOPROXY=https://goproxy.cn,https://goproxy.io,https://proxy.golang.org,direct
 # Expose brew globally
 USER root
 RUN ln -sf /home/linuxbrew/.linuxbrew/bin/brew /usr/local/bin/brew
@@ -76,6 +78,8 @@ ENV HOMEBREW_PREFIX="/home/linuxbrew/.linuxbrew"
 ENV HOMEBREW_CELLAR="/home/linuxbrew/.linuxbrew/Cellar"
 ENV HOMEBREW_REPOSITORY="/home/linuxbrew/.linuxbrew/Homebrew"
 ENV PATH="/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:${PATH}"
+ENV HOMEBREW_NO_AUTO_UPDATE=1
+ENV HOMEBREW_NO_ENV_HINTS=1
 # Fix Homebrew path issues - create brew.sh wrapper script
 RUN mkdir -p /home/linuxbrew/.linuxbrew/Library/Homebrew && \
   echo '#!/bin/bash' > /home/linuxbrew/.linuxbrew/Library/Homebrew/brew.sh && \
@@ -89,6 +93,8 @@ RUN echo '# Homebrew environment setup' > /etc/profile.d/homebrew.sh && \
   echo 'export HOMEBREW_CELLAR="/home/linuxbrew/.linuxbrew/Cellar"' >> /etc/profile.d/homebrew.sh && \
   echo 'export HOMEBREW_REPOSITORY="/home/linuxbrew/.linuxbrew/Homebrew"' >> /etc/profile.d/homebrew.sh && \
   echo 'export PATH="/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:$PATH"' >> /etc/profile.d/homebrew.sh && \
+  echo 'export HOMEBREW_NO_AUTO_UPDATE=1' >> /etc/profile.d/homebrew.sh && \
+  echo 'export HOMEBREW_NO_ENV_HINTS=1' >> /etc/profile.d/homebrew.sh && \
   chmod 644 /etc/profile.d/homebrew.sh
 # ==================================================
 # Install Miniconda for Python environment management
@@ -224,6 +230,8 @@ ENV HOMEBREW_PREFIX="/home/linuxbrew/.linuxbrew"
 ENV HOMEBREW_CELLAR="/home/linuxbrew/.linuxbrew/Cellar"
 ENV HOMEBREW_REPOSITORY="/home/linuxbrew/.linuxbrew/Homebrew"
 ENV PATH="/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:${PATH}"
+ENV HOMEBREW_NO_AUTO_UPDATE=1
+ENV HOMEBREW_NO_ENV_HINTS=1
 
 # Add Homebrew to profile.d so login shells have correct PATH
 RUN echo '# Homebrew environment setup' > /etc/profile.d/homebrew.sh && \
@@ -231,6 +239,8 @@ RUN echo '# Homebrew environment setup' > /etc/profile.d/homebrew.sh && \
   echo 'export HOMEBREW_CELLAR="/home/linuxbrew/.linuxbrew/Cellar"' >> /etc/profile.d/homebrew.sh && \
   echo 'export HOMEBREW_REPOSITORY="/home/linuxbrew/.linuxbrew/Homebrew"' >> /etc/profile.d/homebrew.sh && \
   echo 'export PATH="/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:$PATH"' >> /etc/profile.d/homebrew.sh && \
+  echo 'export HOMEBREW_NO_AUTO_UPDATE=1' >> /etc/profile.d/homebrew.sh && \
+  echo 'export HOMEBREW_NO_ENV_HINTS=1' >> /etc/profile.d/homebrew.sh && \
   chmod 644 /etc/profile.d/homebrew.sh
 
 # ==================================================

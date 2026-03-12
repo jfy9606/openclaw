@@ -214,7 +214,10 @@ RUN --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,shar
   --mount=type=cache,id=openclaw-bookworm-apt-lists,target=/var/lib/apt,sharing=locked \
   apt-get update && \
   DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-  procps hostname curl git openssl python3
+  procps hostname curl git openssl python3 \
+  libnspr4 libnss3 libx11-xcb1 libxcomposite1 libxdamage1 libxrandr2 \
+  libgbm1 libasound2 libpangocairo-1.0-0 libpango-1.0-0 libcairo2 \
+  libatk1.0-0 libatk-bridge2.0-0 libgtk-3-0
 RUN chown node:node /app
 
 # ==================================================
@@ -299,11 +302,10 @@ RUN --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,shar
   apt-get update && \
   DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $OPENCLAW_DOCKER_APT_PACKAGES; \
   fi
-# Optionally install Chromium and Xvfb for browser automation.
-# Build with: docker build --build-arg OPENCLAW_INSTALL_BROWSER=1 ...
+# Install Chromium and Xvfb for browser automation.
 # Adds ~300MB but eliminates the 60-90s Playwright install on every container start.
 # Must run after node_modules COPY so playwright-core is available.
-ARG OPENCLAW_INSTALL_BROWSER=""
+ARG OPENCLAW_INSTALL_BROWSER="1"
 RUN --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,sharing=locked \
   --mount=type=cache,id=openclaw-bookworm-apt-lists,target=/var/lib/apt,sharing=locked \
   if [ -n "$OPENCLAW_INSTALL_BROWSER" ]; then \

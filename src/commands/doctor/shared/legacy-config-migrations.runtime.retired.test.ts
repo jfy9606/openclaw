@@ -799,7 +799,7 @@ describe("retired runtime config migrations", () => {
       logging: { redactSensitive: "off" },
       commands: { useAccessGroups: false },
       gateway: {
-        controlUi: { allowInsecureAuth: true, dangerouslyDisableDeviceAuth: true },
+        controlUi: { dangerouslyDisableDeviceAuth: true },
       },
       proxy: { enabled: true, proxyUrl: "http://proxy.example" },
       discovery: { wideArea: { enabled: true, domain: "openclaw.internal" } },
@@ -853,7 +853,6 @@ describe("retired runtime config migrations", () => {
     expect(result.raw).not.toHaveProperty("web");
     expect(result.raw).not.toHaveProperty("logging.redactSensitive");
     expect(result.raw).not.toHaveProperty("commands.useAccessGroups");
-    expect(result.raw).not.toHaveProperty("gateway.controlUi.allowInsecureAuth");
     expect(result.raw).not.toHaveProperty("memory.qmd");
   });
 

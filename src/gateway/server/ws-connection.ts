@@ -97,6 +97,7 @@ type GatewayWsSharedHandlerParams = {
   preauthHandshakeTimeoutMs?: number;
   isStartupPending?: () => boolean;
   isControlUiDeviceAuthMigrationPending?: () => boolean;
+  isControlUiInsecureAuthConfigured?: () => boolean;
   gatewayMethods: string[];
   events: string[];
   refreshHealthSnapshot: GatewayRequestContext["refreshHealthSnapshot"];
@@ -191,6 +192,7 @@ export function attachGatewayWsConnectionHandler(params: AttachGatewayWsConnecti
     nodeReapprovalCoordinator,
     isStartupPending,
     isControlUiDeviceAuthMigrationPending,
+    isControlUiInsecureAuthConfigured,
     gatewayMethods,
     events,
     refreshHealthSnapshot,
@@ -702,6 +704,7 @@ export function attachGatewayWsConnectionHandler(params: AttachGatewayWsConnecti
       nodeReapprovalCoordinator,
       isStartupPending,
       isControlUiDeviceAuthMigrationPending,
+      isControlUiInsecureAuthConfigured,
       gatewayMethods,
       events,
       extraHandlers,

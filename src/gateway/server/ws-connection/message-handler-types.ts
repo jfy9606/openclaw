@@ -56,6 +56,7 @@ export type GatewayWsMessageHandlerParams = {
   nodeReapprovalCoordinator?: NodeReapprovalCoordinator;
   isStartupPending?: () => boolean;
   isControlUiDeviceAuthMigrationPending?: () => boolean;
+  isControlUiInsecureAuthConfigured?: () => boolean;
   gatewayMethods: string[];
   events: string[];
   extraHandlers: GatewayRequestHandlers;

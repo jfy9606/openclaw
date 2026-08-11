@@ -5,6 +5,7 @@ import {
   isTrustedProxyControlUiOperatorAuth,
   resolveControlUiAuthPolicy,
   shouldAllowControlUiDeviceAuthMigration,
+  shouldAllowInsecureControlUiAuth,
   shouldClearUnboundScopesForMissingDeviceIdentity,
   shouldSkipControlUiPairing,
 } from "./connect-policy.js";
@@ -420,5 +421,25 @@ describe("ws connect policy", () => {
       },
       true,
     );
+  });
+
+  test("insecure control-ui auth allows only device-less Control UI with allowInsecureAuth configured", () => {
+    const cases: Array<{
+      hasDevice: boolean;
+      isControlUi: boolean;
+      insecureAuthConfigured: boolean;
+      expected: boolean;
+    }> = [
+      { hasDevice: false, isControlUi: true, insecureAuthConfigured: true, expected: true },
+      { hasDevice: true, isControlUi: true, insecureAuthConfigured: true, expected: false },
+      { hasDevice: false, isControlUi: false, insecureAuthConfigured: true, expected: false },
+      { hasDevice: false, isControlUi: true, insecureAuthConfigured: false, expected: false },
+      { hasDevice: true, isControlUi: false, insecureAuthConfigured: true, expected: false },
+      { hasDevice: false, isControlUi: false, insecureAuthConfigured: false, expected: false },
+    ];
+
+    for (const tc of cases) {
+      expect(shouldAllowInsecureControlUiAuth(tc)).toBe(tc.expected);
+    }
   });
 });

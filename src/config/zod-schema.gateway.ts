@@ -64,6 +64,10 @@ export const GatewayConfigSchema = z
       .strictObject({
         // Shipped legacy input. Doctor removes it after recording migration state.
         dangerouslyDisableDeviceAuth: z.boolean().optional(),
+        // Fork addition: allow Control UI auth without device identity over
+        // plain HTTP, including LAN/remote clients. Restored fork key; upstream
+        // retired it in favor of HTTPS/localhost-only Control UI access.
+        allowInsecureAuth: z.boolean().optional(),
         enabled: z.boolean().optional(),
         basePath: z.string().optional(),
         root: z.string().optional(),

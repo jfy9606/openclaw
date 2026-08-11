@@ -131,6 +131,12 @@ export type GatewayControlUiConfig = {
    * this break-glass flag can migrate an unpaired browser safely.
    */
   dangerouslyDisableDeviceAuth?: boolean;
+  /**
+   * Fork addition: allow Control UI auth without device identity over plain
+   * HTTP, including LAN/remote clients. Restored fork key; upstream retired it
+   * in favor of HTTPS/localhost-only Control UI access.
+   */
+  allowInsecureAuth?: boolean;
   /** If false, the Gateway will not serve the Control UI (default /). */
   enabled?: boolean;
   /** Optional base path prefix for the Control UI (e.g. "/openclaw"). */

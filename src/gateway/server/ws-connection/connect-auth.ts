@@ -25,6 +25,7 @@ import {
   isTrustedProxyControlUiOperatorAuth,
   resolveControlUiAuthPolicy,
   shouldAllowControlUiDeviceAuthMigration,
+  shouldAllowInsecureControlUiAuth,
   shouldClearUnboundScopesForMissingDeviceIdentity,
   shouldSkipControlUiPairing,
 } from "./connect-policy.js";
@@ -253,6 +254,8 @@ export async function authenticateGatewayConnect(
       authOk,
       authMethod,
     });
+    const insecureControlUiAuthConfigured =
+      isControlUi && context.handler.isControlUiInsecureAuthConfigured?.() === true;
     const allowDeviceLessControlUiMigration =
       !device &&
       shouldAllowControlUiDeviceAuthMigration({
@@ -262,21 +265,31 @@ export async function authenticateGatewayConnect(
         trustedProxyAuthOk,
         authMethod,
       });
-    const preserveInsecureLocalControlUiScopes = allowDeviceLessControlUiMigration;
-    const decision = allowDeviceLessControlUiMigration
-      ? ({ kind: "allow" } as const)
-      : evaluateMissingDeviceIdentity({
-          hasDeviceIdentity: Boolean(device),
-          role,
-          isControlUi,
-          controlUiAuthPolicy,
-          trustedProxyAuthOk,
-          localBackendSelfPairingOk: skipLocalBackendSelfPairing,
-          sharedAuthOk,
-          authOk,
-          hasSharedAuth,
-          isLocalClient,
-        });
+    // Fork addition: gateway.controlUi.allowInsecureAuth opts into device-less
+    // Control UI auth over plain HTTP for LAN/remote clients (upstream retired
+    // the key and hard-rejects insecure Control UI sessions).
+    const allowInsecureControlUiAuth = shouldAllowInsecureControlUiAuth({
+      hasDevice: Boolean(device),
+      isControlUi,
+      insecureAuthConfigured: insecureControlUiAuthConfigured,
+    });
+    const preserveInsecureLocalControlUiScopes =
+      allowDeviceLessControlUiMigration || allowInsecureControlUiAuth;
+    const decision =
+      allowDeviceLessControlUiMigration || allowInsecureControlUiAuth
+        ? ({ kind: "allow" } as const)
+        : evaluateMissingDeviceIdentity({
+            hasDeviceIdentity: Boolean(device),
+            role,
+            isControlUi,
+            controlUiAuthPolicy,
+            trustedProxyAuthOk,
+            localBackendSelfPairingOk: skipLocalBackendSelfPairing,
+            sharedAuthOk,
+            authOk,
+            hasSharedAuth,
+            isLocalClient,
+          });
     // Device-less shared auth clears self-declared scopes by default.
     // Only first-party local control paths preserve scopes: backend self-
     // calls and CLI shared-secret calls that already proved loopback auth.

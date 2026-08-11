@@ -200,7 +200,6 @@ describe("dead config keys", () => {
     "agents.defaults.compaction.memoryFlush.systemPrompt",
     "logging.redactSensitive",
     "commands.useAccessGroups",
-    "gateway.controlUi.allowInsecureAuth",
     "discovery.wideArea.enabled",
     "cloudWorkers.profiles.default.lifetime",
     "mcp.servers.docs.workingDirectory",

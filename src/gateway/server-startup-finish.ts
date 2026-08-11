@@ -159,6 +159,8 @@ export async function finishGatewayStartup(params: {
       preauthHandshakeTimeoutMs,
       isStartupPending: isGatewayStartupPending,
       isControlUiDeviceAuthMigrationPending: () => controlUiDeviceAuthMigration.pending,
+      isControlUiInsecureAuthConfigured: () =>
+        cfgAtStart.gateway?.controlUi?.allowInsecureAuth === true,
       gatewayMethods: runtimeState.gatewayMethods,
       events: GATEWAY_EVENTS,
       logGateway: log,

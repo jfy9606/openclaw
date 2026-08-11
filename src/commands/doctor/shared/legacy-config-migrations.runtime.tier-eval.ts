@@ -11,7 +11,6 @@ const TIER_EVAL_RETIRED_ROOT_PATHS = [
   ["tts", "prefsPath"],
   ["logging", "redactSensitive"],
   ["commands", "useAccessGroups"],
-  ["gateway", "controlUi", "allowInsecureAuth"],
   ["memory", "search", "remote", "nonBatchConcurrency"],
   ["memory", "search", "remote", "batch", "wait"],
   ["memory", "search", "remote", "batch", "concurrency"],

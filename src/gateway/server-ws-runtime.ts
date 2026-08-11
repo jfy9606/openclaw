@@ -34,6 +34,7 @@ export function attachGatewayWsHandlers(params: GatewayWsRuntimeParams) {
     preauthHandshakeTimeoutMs: params.preauthHandshakeTimeoutMs,
     isStartupPending: params.isStartupPending,
     isControlUiDeviceAuthMigrationPending: params.isControlUiDeviceAuthMigrationPending,
+    isControlUiInsecureAuthConfigured: params.isControlUiInsecureAuthConfigured,
     gatewayMethods: params.gatewayMethods,
     events: params.events,
     refreshHealthSnapshot: params.context.refreshHealthSnapshot,

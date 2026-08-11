@@ -19,6 +19,10 @@ ARG OPENCLAW_NODE_BOOKWORM_SLIM_DIGEST="sha256:6f7b03f7c2c8e2e784dcf9295400527b9
 # Keep in sync with .github/actions/setup-node-env/action.yml bun-version.
 # To update: docker buildx imagetools inspect docker.io/oven/bun:<version> and use the manifest-list digest.
 ARG OPENCLAW_BUN_IMAGE="docker.io/oven/bun:1.3.14@sha256:e10577f0db68676a7024391c6e5cb4b879ebd17188ab750cf10024a6d700e5c4"
+# NPM registry: primary is npmjs.org, with a domestic mirror as backup.
+# Override with: docker build --build-arg NPM_REGISTRY=https://registry.npmjs.org .
+ARG NPM_REGISTRY="https://registry.npmjs.org"
+ARG NPM_REGISTRY_BACKUP="https://registry.npmmirror.com"
 
 # Base images are pinned to SHA256 digests for reproducible builds.
 # Dependabot refreshes these blessed digests; release builds consume the
@@ -85,11 +89,22 @@ COPY --from=workspace-deps /out/openclaw-selected-plugin-dirs /tmp/openclaw-sele
 
 # Reduce OOM risk on low-memory hosts during dependency installation.
 # Docker builds on small VMs may otherwise fail with "Killed" (exit 137).
+# Configure npm registry (default: npmjs.org, with npmmirror as backup).
 RUN --mount=type=cache,id=openclaw-pnpm-store,target=/root/.local/share/pnpm/store,sharing=locked \
+    if [ -n "$NPM_REGISTRY" ]; then \
+      export npm_config_registry="$NPM_REGISTRY"; \
+      echo "==> Using npm registry: $NPM_REGISTRY"; \
+    fi; \
     NODE_OPTIONS=--max-old-space-size=2048 pnpm install --frozen-lockfile \
       --config.supportedArchitectures.os=linux \
       --config.supportedArchitectures.cpu="$(node -p 'process.arch')" \
-      --config.supportedArchitectures.libc=glibc
+      --config.supportedArchitectures.libc=glibc || \
+    (echo "==> Primary registry failed, retrying with backup: $NPM_REGISTRY_BACKUP" && \
+     export npm_config_registry="$NPM_REGISTRY_BACKUP"; \
+     NODE_OPTIONS=--max-old-space-size=2048 pnpm install --frozen-lockfile \
+       --config.supportedArchitectures.os=linux \
+       --config.supportedArchitectures.cpu="$(node -p 'process.arch')" \
+       --config.supportedArchitectures.libc=glibc)
 
 # pnpm v10+ may append peer-resolution hashes to virtual-store folder names; do not hardcode `.pnpm/...`
 # paths. Matrix's native downloader can hit transient release CDN errors while
@@ -167,10 +182,19 @@ RUN if grep -qx 'qa-lab' /tmp/openclaw-selected-plugin-dirs; then \
 # metadata before copying runtime assets into the final image.
 FROM build AS runtime-assets
 ARG OPENCLAW_BUNDLED_PLUGIN_DIR
+ARG NPM_REGISTRY
+ARG NPM_REGISTRY_BACKUP
 # BuildKit cache mounts are not part of cached layers; seed tarballs for the
 # installed prod graph in the same step that runs offline prune.
+# Try primary registry first, fall back to domestic mirror, then continue
+# if both fail (missing optional packages are skipped by offline prune).
 RUN --mount=type=cache,id=openclaw-pnpm-store,target=/root/.local/share/pnpm/store,sharing=locked \
-    node scripts/list-prod-store-packages.mjs | xargs -r pnpm store add && \
+    if [ -n "$NPM_REGISTRY" ]; then export npm_config_registry="$NPM_REGISTRY"; fi; \
+    node scripts/list-prod-store-packages.mjs | xargs -r pnpm store add || \
+    (echo "==> Primary registry failed for store add, retrying with backup: $NPM_REGISTRY_BACKUP" && \
+     export npm_config_registry="$NPM_REGISTRY_BACKUP"; \
+     node scripts/list-prod-store-packages.mjs | xargs -r pnpm store add) || \
+    echo "WARN: some optional packages failed to add to store; continuing for offline prune" && \
     CI=true pnpm prune --prod \
       --config.offline=true \
       --config.supportedArchitectures.os=linux \
@@ -375,6 +399,53 @@ RUN install -d -m 0755 -o node -g node /home/node/.config && \
     stat -c '%U:%G %a' /home/node/.config | grep -qx 'node:node 755' && \
     stat -c '%U:%G %a' /home/node/.config/openclaw | grep -qx 'node:node 700'
 
+# Optionally install Homebrew, Go (via Homebrew), and Miniconda for development tools.
+# Build with: docker build --build-arg OPENCLAW_INSTALL_DEV_TOOLS=1 ...
+ARG OPENCLAW_INSTALL_DEV_TOOLS=""
+ARG OPENCLAW_BREW_INSTALL_DIR=/home/linuxbrew/.linuxbrew
+ARG OPENCLAW_MINICONDA_INSTALL_DIR=/opt/miniconda
+
+ENV HOMEBREW_PREFIX=${OPENCLAW_BREW_INSTALL_DIR} \
+  HOMEBREW_CELLAR=${OPENCLAW_BREW_INSTALL_DIR}/Cellar \
+  HOMEBREW_REPOSITORY=${OPENCLAW_BREW_INSTALL_DIR}/Homebrew \
+  PATH=${OPENCLAW_BREW_INSTALL_DIR}/bin:${OPENCLAW_BREW_INSTALL_DIR}/sbin:${OPENCLAW_MINICONDA_INSTALL_DIR}/bin:${PATH}
+
+RUN --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,id=openclaw-bookworm-apt-lists,target=/var/lib/apt,sharing=locked \
+    if [ -n "$OPENCLAW_INSTALL_DEV_TOOLS" ]; then \
+      apt-get update && \
+      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        procps curl git ca-certificates; \
+    fi
+
+RUN if [ -n "$OPENCLAW_INSTALL_DEV_TOOLS" ]; then \
+    if ! id -u linuxbrew >/dev/null 2>&1; then useradd -m -s /bin/bash linuxbrew; fi && \
+    mkdir -p "${OPENCLAW_BREW_INSTALL_DIR}" && \
+    chown -R linuxbrew:linuxbrew "$(dirname "${OPENCLAW_BREW_INSTALL_DIR}")" && \
+    su - linuxbrew -c "NONINTERACTIVE=1 CI=1 /bin/bash -c '$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)'" && \
+    if [ ! -e "${OPENCLAW_BREW_INSTALL_DIR}/Library" ]; then ln -s "${OPENCLAW_BREW_INSTALL_DIR}/Homebrew/Library" "${OPENCLAW_BREW_INSTALL_DIR}/Library"; fi && \
+    if [ ! -x "${OPENCLAW_BREW_INSTALL_DIR}/bin/brew" ]; then echo "brew install failed"; exit 1; fi && \
+    ln -sf "${OPENCLAW_BREW_INSTALL_DIR}/bin/brew" /usr/local/bin/brew && \
+    brew install go; \
+    fi
+
+RUN if [ -n "$OPENCLAW_INSTALL_DEV_TOOLS" ]; then \
+    ARCH=$(uname -m); \
+    if [ "$ARCH" = "aarch64" ]; then MINICONDA_ARCH="aarch64"; else MINICONDA_ARCH="x86_64"; fi; \
+    curl -fsSL "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-${MINICONDA_ARCH}.sh" -o /tmp/miniconda.sh && \
+    bash /tmp/miniconda.sh -b -p "${OPENCLAW_MINICONDA_INSTALL_DIR}" && \
+    rm /tmp/miniconda.sh && \
+    "${OPENCLAW_MINICONDA_INSTALL_DIR}/bin/conda" init bash && \
+    ln -sf "${OPENCLAW_MINICONDA_INSTALL_DIR}/bin/conda" /usr/local/bin/conda && \
+    mkdir -p /home/node/openclaw/workspace/conda_envs && \
+    mkdir -p /home/node/openclaw/workspace/conda_pkgs && \
+    echo "envs_dirs:" > /home/node/.condarc && \
+    echo "  - ~/openclaw/workspace/conda_envs" >> /home/node/.condarc && \
+    echo "pkgs_dirs:" >> /home/node/.condarc && \
+    echo "  - ~/openclaw/workspace/conda_pkgs" >> /home/node/.condarc && \
+    chown -R node:node /home/node/openclaw /home/node/.condarc; \
+    fi
+
 ENV NODE_ENV=production
 
 # Security hardening: Run as non-root user
@@ -398,4 +469,4 @@ USER node
 HEALTHCHECK --interval=3m --timeout=10s --start-period=15s --retries=3 \
   CMD ["node", "dist/docker-healthcheck.js"]
 ENTRYPOINT ["tini", "-s", "--"]
-CMD ["node", "openclaw.mjs", "gateway"]
+CMD ["node", "openclaw.mjs", "gateway", "--allow-unconfigured"]

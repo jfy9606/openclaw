@@ -1,0 +1,66 @@
+name: keep-fork-workflows-disabled
+
+"on":
+  push:
+    branches: ["main"]
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: keep-fork-workflows-disabled
+  cancel-in-progress: false
+
+jobs:
+  disable:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Disable all workflows and purge their runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set +e
+          SELF="$GITHUB_WORKFLOW"
+          deleted=0; canceled=0; dis=0; probs=0
+          clean=0
+          echo "guard workflow: $SELF"
+          page=1
+          while :; do
+            wfs=$(gh api "repos/$GH_REPO/actions/workflows?per_page=100&page=$page" | jq -r --arg self "$SELF" '.workflows[] | select(.name != $self) | [.id,.name,.state] | @tsv')
+            if [ -z "$wfs" ]; then break; fi
+            while IFS=$'\t' read -r wfid wfname wfstate; do
+              if [ "$wfstate" = "active" ]; then
+                gh api --method PUT "repos/$GH_REPO/actions/workflows/$wfid/disable" >/dev/null 2>&1
+                [ $? -eq 0 ] && dis=$((dis+1))
+              fi
+              rpage=1
+              while :; do
+                runs=$(gh api "repos/$GH_REPO/actions/workflows/$wfid/runs?per_page=100&page=$rpage" | jq -r '.workflow_runs[].id' 2>/dev/null)
+                [ -z "$runs" ] && break
+                while read -r rid; do
+                  if ! gh api --method DELETE "repos/$GH_REPO/actions/runs/$rid" >/dev/null 2>&1; then
+                    gh api --method POST "repos/$GH_REPO/actions/runs/$rid/cancel" >/dev/null 2>&1 && canceled=$((canceled+1))
+                    sleep 3
+                    if ! gh api --method DELETE "repos/$GH_REPO/actions/runs/$rid" >/dev/null 2>&1; then
+                      probs=$((probs+1)); echo "! undeletable run $rid ($wname)"
+                    else clean=$((clean+1)); fi
+                  else
+                    clean=$((clean+1))
+                  fi
+                  if [ $clean -ge 2000 ]; then break 3; fi
+                  sleep 1
+                done <<< "$runs"
+                [ "$(echo "$runs" | wc -l)" -lt 100 ] && break
+                rpage=$((rpage+1))
+              done
+            done <<< "$wfs"
+            [ "$(echo "$wfs" | wc -l)" -lt 100 ] && break
+            page=$((page+1))
+          done
+          echo "> done: disabled=$dis deleted=$clean canceled=$canceled problems=$probs"
+          exit 0

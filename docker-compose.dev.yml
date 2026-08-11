@@ -1,0 +1,64 @@
+# Development override: run the gateway from the mounted source tree with the
+# repo's dev runner (rebuild-on-change + in-container restart), so code edits
+# are picked up in seconds without rebuilds/restarts of the image.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml logs -f
+#
+# Image rebuilds are only needed when the Dockerfile/base image or the
+# dependency lockfile changes; the install layers are cache-friendly so a lock
+# bump rebuilds fast. `/app/node_modules` is an anonymous volume seeded from
+# the image so container and host node_modules versions never mix.
+#
+# The dev image targets the Dockerfile `build` stage (full bookworm + corepack
+# + pnpm). Storage volume mounts stay identical to the production compose; only
+# runtime code and dependencies come from the host.
+
+services:
+  openclaw-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: build
+      args:
+        # Primary registry override: npmjs is throttled from this network and
+        # the Dockerfile's backup-registry retry path is broken (a second
+        # `pnpm config set --global` fails on the global-bin-dir PATH check),
+        # so pin the mirror as primary.
+        NPM_REGISTRY: https://registry.npmmirror.com
+        NPM_REGISTRY_BACKUP: https://registry.npmjs.org
+    image: openclaw:dev
+    restart: "no"
+    command:
+      [
+        "pnpm",
+        "gateway:watch:raw",
+        "--allow-unconfigured",
+        "--bind",
+        "auto",
+        "--port",
+        "18789",
+      ]
+    environment:
+      # run-node skips the DTS build on every watch cycle.
+      OPENCLAW_RUN_NODE_SKIP_DTS_BUILD: "1"
+      # Corepack fetches pnpm itself; point it at the fast mirror too.
+      COREPACK_NPM_REGISTRY: https://registry.npmmirror.com
+    volumes:
+      - ".:/app"
+      - "/app/node_modules"
+      - "${OPENCLAW_CONFIG_DIR:-${HOME:-/tmp}/.openclaw}:/home/node/.openclaw"
+      - "${OPENCLAW_WORKSPACE_DIR:-${HOME:-/tmp}/.openclaw/workspace}:/home/node/.openclaw/workspace"
+      - "${OPENCLAW_AUTH_PROFILE_SECRET_DIR:-${HOME:-/tmp}/.openclaw-auth-profile-secrets}:/home/node/.config/openclaw"
+    healthcheck:
+      test: ["CMD", "node", "dist/docker-healthcheck.js"]
+      interval: 30s
+      timeout: 5s
+      retries: 8
+      start_period: 240s
+
+  openclaw-cli:
+    image: openclaw:dev
+    depends_on:
+      - openclaw-gateway

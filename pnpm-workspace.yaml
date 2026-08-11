@@ -118,6 +118,7 @@ minimumReleaseAgeExclude:
   - "rolldown"
   - "sqlite-vec"
   - "sqlite-vec-*"
+  - "@copilotkit/aimock"
   - "rastermill"
   - "clawpdf"
 

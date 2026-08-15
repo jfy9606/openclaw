@@ -24,6 +24,10 @@
       "types": "./dist/src/plugin-sdk/browser-config.d.ts",
       "default": "./src/browser-config.ts"
     },
+    "./browser-web-auth": {
+      "types": "./dist/src/plugin-sdk/browser-web-auth.d.ts",
+      "default": "./src/browser-web-auth.ts"
+    },
     "./channel-activity-runtime": {
       "types": "./dist/src/plugin-sdk/channel-activity-runtime.d.ts",
       "default": "./src/channel-activity-runtime.ts"

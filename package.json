@@ -890,6 +890,10 @@
     "./plugin-sdk/browser-config": {
       "default": "./dist/plugin-sdk/browser-config.js"
     },
+    "./plugin-sdk/browser-web-auth": {
+      "types": "./dist/plugin-sdk/browser-web-auth.d.ts",
+      "default": "./dist/plugin-sdk/browser-web-auth.js"
+    },
     "./plugin-sdk/boolean-param": {
       "types": "./dist/plugin-sdk/boolean-param.d.ts",
       "default": "./dist/plugin-sdk/boolean-param.js"
@@ -1358,6 +1362,14 @@
     },
     "./plugin-sdk/web-content-extractor": {
       "default": "./dist/plugin-sdk/web-content-extractor.js"
+    },
+    "./plugin-sdk/web-models": {
+      "types": "./dist/plugin-sdk/web-models.d.ts",
+      "default": "./dist/plugin-sdk/web-models.js"
+    },
+    "./plugin-sdk/askonce": {
+      "types": "./dist/plugin-sdk/askonce.d.ts",
+      "default": "./dist/plugin-sdk/askonce.js"
     },
     "./plugin-sdk/provider-web-fetch-contract": {
       "default": "./dist/plugin-sdk/provider-web-fetch-contract.js"

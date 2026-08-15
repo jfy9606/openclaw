@@ -2328,6 +2328,8 @@ importers:
 
   packages/workboard-contract: {}
 
+  src/zero-token/extensions/askonce: {}
+
   ui:
     dependencies:
       '@awesome.me/webawesome':

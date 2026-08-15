@@ -1,4 +1,7 @@
-import type { ModelCatalogAlias } from "@openclaw/model-catalog-core/model-catalog-types";
+import {
+  MODEL_CATALOG_APIS,
+  type ModelCatalogAlias,
+} from "@openclaw/model-catalog-core/model-catalog-types";
 import { normalizeProviderId } from "@openclaw/model-catalog-core/provider-id";
 import type { ModelProviderConfig } from "../../config/types.models.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
@@ -82,7 +85,12 @@ function resolveConfiguredModelCatalogProviderApi(params: {
           staticModelIdMatches({ candidateId: candidate.id, provider, modelId }),
         )
       : undefined;
-  return model?.api ?? config?.api;
+  // Fork: config ModelApi is wider than ModelCatalogApi (web-model transports);
+  // those never participate in catalog alias transport resolution.
+  const api = model?.api ?? config?.api;
+  return api && (MODEL_CATALOG_APIS as readonly string[]).includes(api)
+    ? (api as ModelCatalogAlias["api"])
+    : undefined;
 }
 
 function hasUnconditionalManifestModelCatalogSuppression(params: {

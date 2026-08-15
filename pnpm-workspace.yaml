@@ -4,6 +4,7 @@ packages:
   - packages/*
   - extensions/*
   - examples/*
+  - src/zero-token/extensions/*
 
 minimumReleaseAge: 2880
 

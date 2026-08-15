@@ -22,6 +22,21 @@ export const MODEL_APIS = [
   "bedrock-converse-stream",
   "ollama",
   "azure-openai-responses",
+  // Fork addition: web-model transports backed by src/zero-token/** stream factories.
+  "chatgpt-web",
+  "claude-web",
+  "deepseek-web",
+  "doubao-web",
+  "gemini-web",
+  "glm-web",
+  "glm-intl-web",
+  "grok-web",
+  "kimi-web",
+  "perplexity-web",
+  "qwen-web",
+  "qwen-cn-web",
+  "xiaomimo-web",
+  "perplexity-web",
 ] as const;
 
 export type ModelApi = (typeof MODEL_APIS)[number];

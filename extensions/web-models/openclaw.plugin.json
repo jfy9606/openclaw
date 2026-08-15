@@ -1,0 +1,59 @@
+{
+  "id": "web-models",
+  "name": "Web Models",
+  "description": "Web-based AI model providers (ChatGPT Web, Claude Web, DeepSeek Web, etc.)",
+  "providers": [
+    "chatgpt-web",
+    "claude-web",
+    "deepseek-web",
+    "doubao-web",
+    "gemini-web",
+    "glm-web",
+    "glm-intl-web",
+    "grok-web",
+    "kimi-web",
+    "perplexity-web",
+    "qwen-web",
+    "qwen-cn-web",
+    "xiaomimo-web",
+    "manus-api"
+  ],
+  "setup": {
+    "providers": [
+      { "id": "chatgpt-web", "authMethods": ["web"] },
+      { "id": "claude-web", "authMethods": ["web"] },
+      { "id": "deepseek-web", "authMethods": ["web"] },
+      { "id": "doubao-web", "authMethods": ["web"] },
+      { "id": "gemini-web", "authMethods": ["web"] },
+      { "id": "glm-web", "authMethods": ["web"] },
+      { "id": "glm-intl-web", "authMethods": ["web"] },
+      { "id": "grok-web", "authMethods": ["web"] },
+      { "id": "kimi-web", "authMethods": ["web"] },
+      { "id": "perplexity-web", "authMethods": ["web"] },
+      { "id": "qwen-web", "authMethods": ["web"] },
+      { "id": "qwen-cn-web", "authMethods": ["web"] },
+      { "id": "xiaomimo-web", "authMethods": ["web"] }
+    ],
+    "requiresRuntime": true
+  },
+  "providerAuthChoices": [
+    { "provider": "chatgpt-web", "method": "web", "choiceId": "chatgpt-web", "choiceLabel": "ChatGPT Web" },
+    { "provider": "claude-web", "method": "web", "choiceId": "claude-web", "choiceLabel": "Claude Web" },
+    { "provider": "deepseek-web", "method": "web", "choiceId": "deepseek-web", "choiceLabel": "DeepSeek Web" },
+    { "provider": "doubao-web", "method": "web", "choiceId": "doubao-web", "choiceLabel": "Doubao Web" },
+    { "provider": "gemini-web", "method": "web", "choiceId": "gemini-web", "choiceLabel": "Gemini Web" },
+    { "provider": "glm-web", "method": "web", "choiceId": "glm-web", "choiceLabel": "GLM Web (国内)" },
+    { "provider": "glm-intl-web", "method": "web", "choiceId": "glm-intl-web", "choiceLabel": "GLM Web (国际)" },
+    { "provider": "grok-web", "method": "web", "choiceId": "grok-web", "choiceLabel": "Grok Web" },
+    { "provider": "kimi-web", "method": "web", "choiceId": "kimi-web", "choiceLabel": "Kimi Web" },
+    { "provider": "perplexity-web", "method": "web", "choiceId": "perplexity-web", "choiceLabel": "Perplexity Web" },
+    { "provider": "qwen-web", "method": "web", "choiceId": "qwen-web", "choiceLabel": "Qwen Web (阿里国内)" },
+    { "provider": "qwen-cn-web", "method": "web", "choiceId": "qwen-cn-web", "choiceLabel": "Qwen Web (阿里国际)" },
+    { "provider": "xiaomimo-web", "method": "web", "choiceId": "xiaomimo-web", "choiceLabel": "Xiaomi Mimo Web" }
+  ],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

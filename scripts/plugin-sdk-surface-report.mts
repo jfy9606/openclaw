@@ -195,7 +195,9 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       //     (realtime-voice-activation is private-local and not counted here).
       // +1: registry-bound plugin command planning and exact selected execution.
       // +1: canonical Computer Use wire contract and node-host provider seam.
-      145,
+      // +2: web-model transport streams and AskOnce multi-query plugin entrypoints.
+      // +1: restore browser web-auth helpers for zero-token browser capture flows.
+      156,
       env,
     ),
     publicExports: readPluginSdkSurfaceBudgetEnv(
@@ -271,6 +273,7 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: add the account-aware native approval request selector.
       // +3: add canonical coercion exports while retaining the shipped asString compatibility name.
       // +2: add high-use coercion primitives while retaining shipped object-record exports.
+<<<<<<< HEAD
       // +2: channel-neutral location and provider-update hook contracts.
       // +1: QQBot 2.0.1 operator-approval Gateway client compatibility export.
       // +2: narrow channel agent-run terminal reader and outcome contract.
@@ -285,7 +288,9 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       //     (voice-call/matrix runtime-doctor repair names, WhatsApp ack policy,
       //     Slack progress-draft render) so installed plugins survive upgrade (#124041 class).
       // -1: remove the orphan diagnostic traceparent propagation export.
-      4329,
+      // +13: web-model stream factory contracts and AskOnce plugin runtime contracts.
+      // +9: browser web-auth config, profile, headers, CDP URL, launch, stop, and types.
+      4351,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -348,6 +353,7 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: add the account-aware native approval request selector.
       // +3: add canonical coercion exports while retaining the shipped asString compatibility name.
       // +2: add high-use callable coercion primitives while retaining shipped object-record exports.
+<<<<<<< HEAD
       // +1: QQBot 2.0.1 operator-approval Gateway client compatibility export.
       // +1: narrow channel agent-run terminal reader.
       // +5: narrow string, record, and error coercion helpers.
@@ -359,7 +365,9 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       //     (voice-call/matrix runtime-doctor repair names, WhatsApp ack policy,
       //     Slack progress-draft render) so installed plugins survive upgrade (#124041 class).
       // -1: remove the orphan diagnostic traceparent propagation export.
-      2576,
+      // +6: web-model stream factory helpers and AskOnce CLI runtime helpers.
+      // +6: browser web-auth callable helpers and facade chrome-launch surface.
+      2588,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(

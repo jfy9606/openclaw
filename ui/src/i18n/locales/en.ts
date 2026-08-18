@@ -870,6 +870,7 @@ export const en: TranslationMap = {
     createOutcomeUnknown:
       "The Gateway changed while this session was starting. Check recent sessions before starting this task again.",
     cliAgentsGroup: "CLI agents",
+    cliAgentsUnavailable: "CLI agents unavailable",
     cloudSetupInterrupted:
       "This cloud session's setup was interrupted. Check recent sessions before starting this task again.",
     catalogUnavailable: "This session target is unavailable.",
@@ -890,6 +891,15 @@ export const en: TranslationMap = {
     emptyTitle: "No dashboards yet",
     emptyDescription: "Open a session and switch to the Dashboard face to add it here.",
     loadError: "Could not load dashboards: {error}",
+    openFullscreen: "Open full-screen dashboard",
+  },
+  dashboardDocument: {
+    close: "Close dashboard",
+    missingSession: "No dashboard session was specified.",
+    notFound: "This session could not be found.",
+    unavailable: "Session dashboards are unavailable for this connection.",
+    loadFailed:
+      "Could not load this dashboard: {error}. Check the Gateway connection and try again.",
   },
   sessionsView: {
     subagentPrefix: "Subagent:",
@@ -3363,6 +3373,11 @@ export const en: TranslationMap = {
     timeAll: "All time",
     people: "People",
     allPeople: "All",
+    everyone: "Everyone",
+    peopleButtonLabel: "Filter sessions by person",
+    lastActive: "· {time}",
+    unresolvedIdentities: "Unresolved identities",
+    clearPersonFilter: "Clear person filter",
     sessions: "Sessions",
     showing: "Showing {shown} of {total}",
     today: "Today",
@@ -3500,6 +3515,8 @@ export const en: TranslationMap = {
       loadingPrevious: "Loading the previous revision\u2026",
       previousUnavailable: "The previous revision is unavailable, so this is the full body.",
       tooLarge: "This comparison is too large to show here. Switch to Full body to read it.",
+      truncated:
+        "This comparison is truncated. Changes and statistics may be incomplete. Switch to Full body to review the complete revision.",
     },
     applied: {
       history: "History",
@@ -3776,7 +3793,9 @@ export const en: TranslationMap = {
       toolCapability: "Tool: {capability}",
       granted: "Granted",
       allow: "Allow",
+      allowFailed: "Could not allow widget access. Try again.",
       reject: "Reject",
+      rejectFailed: "Could not reject widget access. Try again.",
       rejected: "Access rejected",
       rejectedDetail: "This widget stays inactive until it is removed or replaced.",
       appLoading: "Restoring app…",
@@ -5108,6 +5127,10 @@ export const en: TranslationMap = {
       dockRight: "Dock chat right",
       dockBottom: "Dock chat bottom",
       resizeDock: "Resize chat dock",
+      enterFullscreen: "Enter fullscreen",
+      exitFullscreen: "Exit fullscreen",
+      fullscreenUnavailable: "Fullscreen is unavailable in this browser",
+      fullscreenFailed: "Could not change fullscreen mode: {error}",
       workboardCard: "Workboard card: {title}, {status}",
       defaultTab: "Main",
       mockPlaceholder: "Board view seam · {tabs} tabs · {widgets} widgets",

@@ -4,8 +4,7 @@ import { addSessionMember } from "../config/sessions/session-sharing-store.js";
 import { closeOpenClawAgentDatabasesForTest } from "../state/openclaw-agent-db.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { sessionGroupHandlers } from "./server-methods/sessions-groups.js";
-import type { GatewayClient } from "./server-methods/types.js";
-import type { GatewayRequestContext, RespondFn } from "./server-methods/types.js";
+import type { GatewayClient, GatewayRequestContext, RespondFn } from "./server-methods/types.js";
 import {
   listSessionGroupDefaults,
   putSessionGroups,
@@ -120,6 +119,40 @@ describe("session sharing policy", () => {
       expect(authorization.error).toMatchObject({
         details: { code: "SESSION_PARTICIPATION_REQUIRED" },
       });
+    });
+  });
+
+  it("extracts every message-cut lifecycle target from sessionKey", async () => {
+    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+      const sessionKey = "agent:main:message-cut-target";
+      await upsertSessionEntryCore(
+        { agentId: "main", sessionKey },
+        {
+          sessionId: "session-message-cut-target",
+          updatedAt: 1,
+          visibility: "read-only",
+          createdActor: { type: "human", id: "owner" },
+        },
+      );
+      const context = { getRuntimeConfig: () => ({}) } as GatewayRequestContext;
+      for (const method of ["sessions.fork", "sessions.rewind", "sessions.branches.switch"]) {
+        expect(
+          resolveSessionMutationAuthorization({
+            client: client({ user: "owner" }),
+            method,
+            requestParams: { sessionKey },
+            context,
+          }),
+        ).toMatchObject({ error: null, authorization: expect.any(Object) });
+        expect(
+          resolveSessionMutationAuthorization({
+            client: client({ user: "outsider" }),
+            method,
+            requestParams: { sessionKey },
+            context,
+          }).error,
+        ).toMatchObject({ details: { code: "SESSION_PARTICIPATION_REQUIRED" } });
+      }
     });
   });
 

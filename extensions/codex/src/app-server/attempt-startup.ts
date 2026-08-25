@@ -11,6 +11,7 @@ import {
   type EmbeddedRunAttemptParamsV2 as EmbeddedRunAttemptParams,
   type resolveSandboxContext,
 } from "openclaw/plugin-sdk/agent-harness-runtime";
+import type { PluginRuntime } from "openclaw/plugin-sdk/plugin-runtime";
 import {
   CODEX_APP_SERVER_UNSUBSCRIBE_TIMEOUT_MS,
   CodexAppServerUnsafeSubscriptionError,
@@ -73,7 +74,9 @@ import type { CodexAppServerBindingStore } from "./session-binding.js";
 import {
   clearSharedCodexAppServerClientIfCurrent,
   clearSharedCodexAppServerClientIfCurrentAndUnclaimed,
+  createIsolatedCodexAppServerClient,
   isCodexAppServerStartSelectionChangedError,
+  readCodexAppServerClientDesktopGenerationFingerprint,
   releaseLeasedSharedCodexAppServerClient,
   retireSharedCodexAppServerClientIfCurrent,
   type CodexAppServerClientOptions,
@@ -131,6 +134,7 @@ type StartCodexAttemptThreadResult = {
 export async function startCodexAttemptThread(params: {
   attemptClientFactory: CodexAppServerClientFactory;
   bindingStore: CodexAppServerBindingStore;
+  runtime?: PluginRuntime;
   appServer: CodexAppServerRuntimeOptions;
   pluginConfig: CodexPluginConfig;
   computerUseConfig: ResolvedCodexComputerUseConfig;
@@ -148,6 +152,7 @@ export async function startCodexAttemptThread(params: {
   shellEnvironment?: Readonly<Record<string, string>>;
   disableLoginShell?: boolean;
   buildAttemptParams: () => EmbeddedRunAttemptParams;
+  runtimeModelId?: string;
   sessionAgentId: string;
   effectiveWorkspace: string;
   effectiveCwd: string;
@@ -159,6 +164,7 @@ export async function startCodexAttemptThread(params: {
   finalConfigPatch?: Parameters<typeof startOrResumeThread>[0]["finalConfigPatch"];
   buildFinalConfigPatch?: Parameters<typeof startOrResumeThread>[0]["buildFinalConfigPatch"];
   nativeHookRelayGeneration?: string;
+  nativeHookRelayRequired?: boolean;
   bundleMcpThreadConfig: CodexBundleMcpThreadConfig;
   /** OpenClaw owns configured MCP dynamically for this scheduled turn. */
   configuredMcpOwnershipVersion?: 1;
@@ -170,6 +176,7 @@ export async function startCodexAttemptThread(params: {
   startupTimeoutMs: number;
   signal: AbortSignal;
   onStartupTimeout: () => void | Promise<void>;
+  onExecutionDisconnect?: (error: Error) => void;
   spawnedBy: EmbeddedRunAttemptParams["spawnedBy"];
 }): Promise<StartCodexAttemptThreadResult> {
   let pluginAppServer = params.appServer;
@@ -273,7 +280,11 @@ export async function startCodexAttemptThread(params: {
                 return;
               }
               startupClientLeaseReleased = true;
-              releaseLeasedSharedCodexAppServerClient(activeStartupClient);
+              if (params.attemptClientFactory === createIsolatedCodexAppServerClient) {
+                activeStartupClient.close();
+              } else {
+                releaseLeasedSharedCodexAppServerClient(activeStartupClient);
+              }
             };
             releaseSharedClientLease = startupClientLease;
             attemptedClient = activeStartupClient;
@@ -308,7 +319,10 @@ export async function startCodexAttemptThread(params: {
                 signal: startupAbandonController.signal,
               });
             } catch (error) {
-              if (startupAbandonController.signal.aborted) {
+              if (
+                startupAbandonController.signal.aborted ||
+                isCodexAppServerStartSelectionChangedError(error)
+              ) {
                 throw error;
               }
               throw new AgentHarnessPreflightError(
@@ -325,6 +339,8 @@ export async function startCodexAttemptThread(params: {
               envApiKeyFingerprint: params.startupEnvApiKeyCacheKey,
               appServerVersion: activeStartupClient.getServerVersion(),
               runtimeIdentity: startupRuntimeIdentity,
+              desktopGenerationFingerprint:
+                readCodexAppServerClientDesktopGenerationFingerprint(activeStartupClient),
             });
             const appServerRuntimeFingerprint = buildCodexAppServerRuntimeFingerprint({
               appServer: params.appServer,
@@ -361,7 +377,10 @@ export async function startCodexAttemptThread(params: {
             const releaseStartupSandboxEnvironment = async () => {
               if (startupSandboxEnvironmentAcquired) {
                 startupSandboxEnvironmentAcquired = false;
-                await releaseCodexSandboxExecServerEnvironment(params.sandbox);
+                await releaseCodexSandboxExecServerEnvironment(
+                  params.sandbox,
+                  startupSandboxEnvironment,
+                );
               }
             };
             releaseStartupResourcesOnTimeout = releaseStartupSandboxEnvironment;
@@ -375,9 +394,11 @@ export async function startCodexAttemptThread(params: {
                 ? await ensureCodexSandboxExecServerEnvironment({
                     client: activeStartupClient,
                     sandbox: params.sandbox ?? null,
+                    runtime: params.runtime,
                     appServerStartOptions: params.appServer.start,
                     timeoutMs: params.appServer.requestTimeoutMs,
-                    signal: startupAbandonController.signal,
+                    signal: AbortSignal.any([params.signal, startupAbandonController.signal]),
+                    onExecutionDisconnect: params.onExecutionDisconnect,
                   })
                 : undefined;
               startupSandboxEnvironmentAcquired = Boolean(startupSandboxEnvironment);
@@ -441,7 +462,9 @@ export async function startCodexAttemptThread(params: {
                 reserveResumeThread,
                 bindingStore: params.bindingStore,
                 params: params.buildAttemptParams(),
+                runtimeModelId: params.runtimeModelId,
                 agentId: params.sessionAgentId,
+                agentDir: params.agentDir,
                 cwd: startupExecutionCwd,
                 dynamicTools: params.dynamicTools,
                 persistentWebSearchAllowed: params.persistentWebSearchAllowed,
@@ -455,6 +478,7 @@ export async function startCodexAttemptThread(params: {
                 finalConfigPatch: params.finalConfigPatch,
                 buildFinalConfigPatch: params.buildFinalConfigPatch,
                 nativeHookRelayGeneration: params.nativeHookRelayGeneration,
+                nativeHookRelayRequired: params.nativeHookRelayRequired,
                 nativeCodeModeEnabled: params.nativeToolSurfaceEnabled,
                 nativeProviderWebSearchSupport: params.nativeProviderWebSearchSupport,
                 nativeCodeModeOnlyEnabled: params.appServer.codeModeOnly,

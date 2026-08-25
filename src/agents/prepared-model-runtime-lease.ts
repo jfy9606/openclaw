@@ -1,16 +1,17 @@
 /** Agent-run lease admission for lifecycle-owned prepared model runtimes. */
-import fsp from "node:fs/promises";
-import path from "node:path";
+import type { PluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.types.js";
 import { isReservedSystemAgentId } from "../system-agent/agent-id.js";
+import { getPreparedModelRuntimeBorrowedSnapshot } from "./prepared-model-runtime-generation-scope.js";
 import {
   PreparedModelRuntimeOwnerNotPublishedError,
   PreparedModelRuntimePublicationSupersededError,
   hasConfiguredOwnerMatching,
   ownerKey,
   normalizePreparedModelRuntimeInput,
+  preparedModelRuntimeConfigsMatch,
   publishModelRuntimeSnapshot,
   rebindInputToCommittedConfiguredOwner,
-  resolveCommittedConfiguredOwner,
+  resolveConfiguredOwner,
   type PreparedModelRuntimeInput,
   type PreparedModelRuntimeLease,
   type PreparedModelRuntimeOwner,
@@ -23,7 +24,6 @@ import type { PreparedModelRuntimeCatalogMode } from "./prepared-model-runtime.t
 type PreparedModelRuntimeLeaseContext = {
   owners: Map<string, PreparedModelRuntimeOwner>;
   agentBuildCompletions: Map<string, Promise<void>>;
-  workspacePluginRootPresenceResolutions: Map<string, Promise<boolean | undefined>>;
   retainedDirectRunOwners: PreparedModelRuntimeOwnerRetention;
   retainedGatewayRunOwners: PreparedModelRuntimeOwnerRetention;
   getBuildTimeoutMs(): number;
@@ -31,66 +31,6 @@ type PreparedModelRuntimeLeaseContext = {
   getPendingReplacement(): PreparedModelRuntimeReplacement | undefined;
   prepareSnapshot(input: PreparedModelRuntimeInput): Promise<PreparedModelRuntimeSnapshot>;
 };
-
-function resolveReusableConfiguredPluginGeneration(
-  input: PreparedModelRuntimeInput,
-  workspacePluginRootPresent: boolean | undefined,
-  context: PreparedModelRuntimeLeaseContext,
-) {
-  if (workspacePluginRootPresent !== false) {
-    return undefined;
-  }
-  const owner = resolveCommittedConfiguredOwner(context.owners, input);
-  const generation = owner?.pluginGeneration;
-  if (
-    !owner ||
-    !generation ||
-    JSON.stringify(owner.input.runtimePluginSelections) !==
-      JSON.stringify(input.runtimePluginSelections) ||
-    generation.pluginMetadataSnapshot.index.plugins.some((plugin) => plugin.origin === "workspace")
-  ) {
-    return undefined;
-  }
-  return generation;
-}
-
-async function resolveCoalescedWorkspacePluginRootPresence(
-  input: PreparedModelRuntimeInput,
-  context: PreparedModelRuntimeLeaseContext,
-): Promise<boolean | undefined> {
-  const key = ownerKey(input);
-  const existing = context.workspacePluginRootPresenceResolutions.get(key);
-  if (existing) {
-    return await existing;
-  }
-  const pending = resolveWorkspacePluginRootPresence(input);
-  context.workspacePluginRootPresenceResolutions.set(key, pending);
-  try {
-    return await pending;
-  } finally {
-    if (context.workspacePluginRootPresenceResolutions.get(key) === pending) {
-      context.workspacePluginRootPresenceResolutions.delete(key);
-    }
-  }
-}
-
-export async function resolveWorkspacePluginRootPresence(
-  input: PreparedModelRuntimeInput,
-): Promise<boolean | undefined> {
-  if (input.workspacePluginRootPresent !== undefined || !input.workspaceDir) {
-    return input.workspacePluginRootPresent;
-  }
-  return await fsp
-    .stat(path.join(input.workspaceDir, ".openclaw", "extensions"))
-    .then(() => true)
-    .catch((error: unknown) => {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code === "ENOENT" || code === "ENOTDIR") {
-        return false;
-      }
-      throw error;
-    });
-}
 
 export async function acquirePreparedModelRuntimeLeaseFromOwners(
   rawInput: PreparedModelRuntimeInput,
@@ -100,6 +40,7 @@ export async function acquirePreparedModelRuntimeLeaseFromOwners(
     retainIdleRunOwner?: boolean;
     catalogMode?: PreparedModelRuntimeCatalogMode;
     pluginGeneration?: PreparedModelRuntimeOwner["pluginGeneration"];
+    pluginMetadataSnapshot?: PluginMetadataSnapshot;
   } = {},
 ): Promise<PreparedModelRuntimeLease> {
   let normalizedInput = normalizePreparedModelRuntimeInput({
@@ -121,18 +62,7 @@ export async function acquirePreparedModelRuntimeLeaseFromOwners(
       }
     }
   }
-  const retainedWorkspacePluginRootPresent = context.owners.get(ownerKey(normalizedInput))?.input
-    .workspacePluginRootPresent;
-  const workspacePluginRootPresent =
-    rawInput.workspacePluginRootPresent ??
-    retainedWorkspacePluginRootPresent ??
-    (provenance === "run"
-      ? await resolveCoalescedWorkspacePluginRootPresence(normalizedInput, context)
-      : undefined);
-  let input = normalizePreparedModelRuntimeInput({
-    ...normalizedInput,
-    ...(workspacePluginRootPresent === undefined ? {} : { workspacePluginRootPresent }),
-  });
+  let input = normalizedInput;
   let key = ownerKey(input);
   let owner: PreparedModelRuntimeOwner;
   let snapshot: PreparedModelRuntimeSnapshot;
@@ -151,11 +81,57 @@ export async function acquirePreparedModelRuntimeLeaseFromOwners(
       }
       continue;
     }
+    if (provenance === "run" && context.getGatewayLifecycleActive() && options.pluginGeneration) {
+      const configuredOwner = resolveConfiguredOwner(context.owners, input);
+      if (configuredOwner?.pending) {
+        await configuredOwner.pending.catch(() => undefined);
+        continue;
+      }
+      if (
+        configuredOwner &&
+        (configuredOwner.needsRefresh ||
+          configuredOwner.pluginGeneration !== options.pluginGeneration)
+      ) {
+        const borrowed = getPreparedModelRuntimeBorrowedSnapshot(options.pluginGeneration);
+        if (
+          !configuredOwner.needsRefresh &&
+          borrowed &&
+          borrowed.metadataSnapshot === options.pluginGeneration.pluginMetadataSnapshot &&
+          preparedModelRuntimeConfigsMatch(borrowed.config, input.config) &&
+          borrowed.agentId === input.agentId &&
+          borrowed.agentDir === input.agentDir &&
+          borrowed.inheritedAuthDir === input.inheritedAuthDir &&
+          borrowed.workspaceDir === input.workspaceDir &&
+          (!input.allowGatewaySubagentBinding || borrowed.allowGatewaySubagentBinding) &&
+          !input.readOnly &&
+          !input.loadRuntimePlugins &&
+          !input.skipCredentials &&
+          !input.env
+        ) {
+          // A turn may finish under its still-open parent lease after reload. Its historic
+          // generation must never publish over the configured owner for newly admitted work.
+          return { snapshot: borrowed, release: () => {} };
+        }
+        throw new PreparedModelRuntimeOwnerNotPublishedError(
+          `prepared model runtime plugin generation was superseded for ${input.agentDir}`,
+        );
+      }
+    }
     let existing = context.owners.get(key);
     let staleDynamicOwner =
       existing?.needsRefresh &&
       !existing.pending &&
       (existing.provenance === "run" || existing.provenance === "ephemeral");
+    const pluginGenerationChanged =
+      options.pluginGeneration !== undefined &&
+      (existing?.pending ? existing.pendingPluginGeneration : existing?.pluginGeneration) !==
+        options.pluginGeneration;
+    if (existing?.pending && pluginGenerationChanged) {
+      // Do not supersede active discovery. Wait for its owner to settle, then retry against
+      // the published identity so same-generation callers still coalesce.
+      await existing.pending.catch(() => undefined);
+      continue;
+    }
     if (
       context.getGatewayLifecycleActive() &&
       provenance === "run" &&
@@ -187,10 +163,17 @@ export async function acquirePreparedModelRuntimeLeaseFromOwners(
       }
     }
     try {
-      const reusablePluginGeneration =
-        options.pluginGeneration ??
-        resolveReusableConfiguredPluginGeneration(input, workspacePluginRootPresent, context);
-      if (existing && !staleDynamicOwner) {
+      if (existing?.pending && !pluginGenerationChanged) {
+        // Matching callers lease the immutable generation they joined even if a queued
+        // mismatched caller publishes the next owner immediately after this one settles.
+        snapshot = await existing.pending;
+        if (existing.snapshot !== snapshot || existing.needsRefresh) {
+          continue;
+        }
+        owner = existing;
+        break;
+      }
+      if (existing && !staleDynamicOwner && !pluginGenerationChanged) {
         snapshot = await context.prepareSnapshot(input);
       } else {
         // Fresh keys publish a first generation; stale dynamic owners publish a distinct
@@ -204,7 +187,8 @@ export async function acquirePreparedModelRuntimeLeaseFromOwners(
           undefined,
           provenance,
           options.catalogMode,
-          reusablePluginGeneration,
+          options.pluginGeneration,
+          options.pluginMetadataSnapshot,
         );
       }
     } catch (error) {

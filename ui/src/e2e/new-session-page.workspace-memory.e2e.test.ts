@@ -101,7 +101,7 @@ async function withNewSessionPage(
 }
 
 suite.define(() => {
-  it("keeps rail privacy visible and reveals the mobile footer mode on hover or focus", async () => {
+  it("keeps rail privacy visible and exposes Draft from Plus on mobile", async () => {
     await withNewSessionPage(MOBILE_CONTEXT, async (page) => {
       await installMockGateway(page, {
         models: [
@@ -124,37 +124,14 @@ suite.define(() => {
       const footer = page.locator(".new-session-page__composer .agent-chat__composer-footer");
       const attach = page.getByRole("button", { name: "Add attachment" });
       const takePhoto = page.getByRole("menuitem", { name: "Take photo" });
-      const draft = page.getByRole("switch", { name: "Draft" });
       const incognito = page.getByRole("switch", { name: "Incognito" });
       const model = page.locator(".new-session-page__composer .chat-composer-model-control");
-      const message = page.locator(".new-session-page__message");
-      await Promise.all([
-        footer.waitFor(),
-        attach.waitFor(),
-        draft.waitFor({ state: "attached" }),
-        incognito.waitFor(),
-        model.waitFor(),
-      ]);
+      await Promise.all([footer.waitFor(), attach.waitFor(), incognito.waitFor(), model.waitFor()]);
 
       await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
       await page.mouse.move(0, 0);
       await expect
         .poll(() => incognito.evaluate((element) => getComputedStyle(element).opacity))
-        .toBe("1");
-      await expect
-        .poll(() => draft.evaluate((element) => getComputedStyle(element).opacity))
-        .toBe("0");
-      await footer.hover();
-      await expect
-        .poll(() => draft.evaluate((element) => getComputedStyle(element).opacity))
-        .toBe("1");
-      await page.mouse.move(0, 0);
-      await expect
-        .poll(() => draft.evaluate((element) => getComputedStyle(element).opacity))
-        .toBe("0");
-      await message.focus();
-      await expect
-        .poll(() => draft.evaluate((element) => getComputedStyle(element).opacity))
         .toBe("1");
       expect(
         await incognito.evaluate(
@@ -162,25 +139,21 @@ suite.define(() => {
         ),
       ).toBe(true);
 
-      const [footerBox, attachBox, draftBox, modelBox] = await Promise.all([
+      const [footerBox, attachBox, modelBox] = await Promise.all([
         footer.boundingBox(),
         attach.boundingBox(),
-        draft.boundingBox(),
         model.boundingBox(),
       ]);
       expect(footerBox).not.toBeNull();
       expect(attachBox).not.toBeNull();
-      expect(draftBox).not.toBeNull();
       expect(modelBox).not.toBeNull();
-      expect((attachBox?.x ?? 0) + (attachBox?.width ?? 0)).toBeLessThanOrEqual(draftBox?.x ?? 0);
-      for (const control of [attachBox, draftBox, modelBox]) {
+      expect((attachBox?.x ?? 0) + (attachBox?.width ?? 0)).toBeLessThanOrEqual(modelBox?.x ?? 0);
+      for (const control of [attachBox, modelBox]) {
         expect(control?.x ?? 0).toBeGreaterThanOrEqual(footerBox?.x ?? 0);
         expect((control?.x ?? 0) + (control?.width ?? 0)).toBeLessThanOrEqual(
           (footerBox?.x ?? 0) + (footerBox?.width ?? 0),
         );
       }
-      // The new-session footer keeps flex (not the shared chat mobile grid), so
-      // its transient mode switches can wrap before the model picker overflows.
       const controlsOverflow = await footer.evaluate(
         (element) => element.scrollWidth - element.clientWidth,
       );
@@ -188,6 +161,7 @@ suite.define(() => {
 
       await attach.click();
       await expect.poll(() => takePhoto.isVisible()).toBe(true);
+      await expect.poll(() => page.getByRole("menuitem", { name: "Draft" }).isVisible()).toBe(true);
       await page.keyboard.press("Escape");
       await incognito.click();
       await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
@@ -270,9 +244,9 @@ suite.define(() => {
         .toBe(true);
       const secondShortcut = secondModel.locator('[data-chat-model-shortcut-number="2"]');
       await expect.poll(() => secondShortcut.count()).toBe(1);
-      // Async page loads can still shift the whole layout mid-test; measure the
-      // menu and action relative to the picker anchor in one synchronous pass so
-      // only a focus-induced menu move can change the snapshot.
+      // wa-popup updates its anchored position asynchronously. Gate the atomic
+      // baseline on that settlement. After focus, poll the same exact geometry so
+      // transient frames settle before enforcing the opacity-only no-reflow contract.
       const menuGeometry = () =>
         page.evaluate(() => {
           const anchor = document.querySelector('[data-chat-model-select="true"]');
@@ -287,6 +261,7 @@ suite.define(() => {
           const menuBox = menu.getBoundingClientRect();
           const actionBox = action.getBoundingClientRect();
           return {
+            anchorGap: Math.round(anchorBox.top - menuBox.bottom),
             menu: {
               dx: menuBox.x - anchorBox.x,
               dy: menuBox.y - anchorBox.y,
@@ -301,6 +276,7 @@ suite.define(() => {
             },
           };
         });
+      await expect.poll(async () => (await menuGeometry())?.anchorGap).toBe(6);
       const geometryBeforeFocus = await menuGeometry();
       expect(geometryBeforeFocus).not.toBeNull();
       await expect
@@ -314,7 +290,7 @@ suite.define(() => {
       await expect
         .poll(() => secondShortcut.evaluate((element) => getComputedStyle(element).opacity))
         .toBe("0");
-      expect(await menuGeometry()).toEqual(geometryBeforeFocus);
+      await expect.poll(menuGeometry).toEqual(geometryBeforeFocus);
       await search.press("1");
       await expect.poll(() => search.inputValue()).toBe("1");
       await expect.poll(() => picker.getAttribute("open")).toBe("");
@@ -564,10 +540,10 @@ suite.define(() => {
       await page.goto(`${suite.server.baseUrl}new`);
       const trigger = page.locator("#new-session-project-trigger");
       await trigger.click();
-      expect(await page.locator('[data-value="recent::/shared"]').count()).toBe(0);
+      expect(await page.locator('[data-value="recent:/shared"]').count()).toBe(0);
       expect(await page.locator('[data-value="recent-project:registered"]').count()).toBe(0);
       const project = page.locator('[data-value="project:registered"]');
-      const recentFolder = page.locator(`[data-value="recent::${WORKSPACE}/scratch"]`);
+      const recentFolder = page.locator(`[data-value="recent:${WORKSPACE}/scratch"]`);
       await project.waitFor();
       await recentFolder.waitFor();
       await captureProjectUiProof(page, "identity-project-recents-after.png");
@@ -751,7 +727,7 @@ suite.define(() => {
     });
   });
 
-  it("blocks an immediate submit until remembered model and worktree choices validate", async () => {
+  it("reuses ready model metadata while a remembered worktree choice validates", async () => {
     await withNewSessionPage(BASE_CONTEXT, async (page) => {
       const models = MODELS;
       const branches = GIT_BRANCHES;
@@ -779,23 +755,23 @@ suite.define(() => {
       await waitForCommittedChatRoute(page);
       const metadataRequests = (await gateway.getRequests("chat.metadata")).length;
       const branchRequests = (await gateway.getRequests("worktrees.branches")).length;
-      await gateway.deferNext("chat.metadata");
       await gateway.deferNext("worktrees.branches");
       await navigateInApp(page, "new-session");
       await expect.poll(() => new URL(page.url()).pathname).toBe("/new");
       await expect
         .poll(async () => (await gateway.getRequests("chat.metadata")).length)
-        .toBe(metadataRequests + 1);
+        .toBe(metadataRequests);
       await expect
         .poll(async () => (await gateway.getRequests("worktrees.branches")).length)
         .toBe(branchRequests + 1);
+      await expect
+        .poll(() => modelSelect.getAttribute("data-chat-select-value"))
+        .toBe("anthropic/claude-sonnet-4-6");
 
       await page.locator(".new-session-page__message").fill("keep both remembered choices");
       const start = page.getByRole("button", { name: "Start session" });
       await expect.poll(() => start.isDisabled()).toBe(true);
 
-      await gateway.resolveDeferred("chat.metadata", { models });
-      await expect.poll(() => start.isDisabled()).toBe(true);
       await gateway.rejectDeferred("worktrees.branches", {
         code: "UNAVAILABLE",
         message: "branch lookup unavailable",

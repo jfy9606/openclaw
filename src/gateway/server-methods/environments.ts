@@ -2,7 +2,6 @@ import { normalizeSortedUniqueTrimmedStringList } from "@openclaw/normalization-
 import {
   type DesktopObserveParams,
   type EnvironmentSummary,
-  type WorkerMachineOption,
   ErrorCodes,
   errorShape,
   validateDesktopLaunchParams,
@@ -75,25 +74,32 @@ function summarizeNodeEnvironment(
   // runtimes still advertise useful execution surfaces in one stable list.
   const capabilities = uniqueSortedStrings(node.caps, node.commands);
   const platform = node.platform?.trim();
-  const desktop =
-    node.connected === true &&
-    isNodeCommandAllowed({
-      command: NODE_DESKTOP_STREAM_COMMAND,
-      declaredCommands: node.commands,
-      allowlist: resolveNodeCommandAllowlist(config, {
-        platform: node.platform,
-        deviceFamily: node.deviceFamily,
-        commands: node.commands,
-        approvedCommands: node.commands,
-      }),
-    }).ok;
+  const allowlist =
+    node.connected === true
+      ? resolveNodeCommandAllowlist(config, {
+          platform: node.platform,
+          deviceFamily: node.deviceFamily,
+          commands: node.commands,
+          approvedCommands: node.commands,
+        })
+      : undefined;
+  const invocableCommands = allowlist
+    ? uniqueSortedStrings(node.commands)
+        .filter(
+          (command) =>
+            command.length <= 128 &&
+            isNodeCommandAllowed({ command, declaredCommands: node.commands, allowlist }).ok,
+        )
+        .slice(0, 128)
+    : [];
+  const desktop = invocableCommands.includes(NODE_DESKTOP_STREAM_COMMAND);
   return {
     id: `node:${node.nodeId}`,
     type: "node",
     label: node.displayName ?? node.nodeId,
     status: node.connected ? "available" : "unavailable",
     ...(platform ? { platform } : {}),
-    sessionHost: node.connected === true && node.sessionHost === true,
+    sessionHost: node.sessionHost === true,
     ...(node.workerSlots ? { workerSlots: { ...node.workerSlots } } : {}),
     ...(node.workerBundle ? { workerBundle: structuredClone(node.workerBundle) } : {}),
     ...(node.lastConnectedAtMs !== undefined ? { lastConnectedAtMs: node.lastConnectedAtMs } : {}),
@@ -105,6 +111,7 @@ function summarizeNodeEnvironment(
     trust: "persistent",
     ...(desktop ? { desktop: true } : {}),
     ...(capabilities.length > 0 ? { capabilities } : {}),
+    ...(invocableCommands.length > 0 ? { invocableCommands } : {}),
     ...(node.issues?.length ? { issues: [...node.issues] } : {}),
   };
 }
@@ -139,15 +146,18 @@ export function summarizeWorkerEnvironment(
     },
   };
 }
-async function listEnvironments(context: GatewayRequestContext): Promise<EnvironmentSummary[]> {
+export async function listGatewayEnvironments(
+  context: GatewayRequestContext,
+  workers = listWorkerEnvironments(context),
+): Promise<EnvironmentSummary[]> {
   const [devices, nodes] = await Promise.all([listDevicePairing(), listNodePairing()]);
+  // Orphaned or failed rows that retain a node binding still own its pairing role.
+  // Only destroyed proves enrollment retirement; teardown-failed rows clear nodeDeviceId.
   const managedCloudNodeIds = new Set(
-    listWorkerEnvironments(context).flatMap((environment) =>
+    workers.flatMap((environment) =>
       environment.providerId !== "device" &&
       environment.nodeDeviceId &&
-      environment.state !== "destroyed" &&
-      environment.state !== "failed" &&
-      environment.state !== "orphaned"
+      environment.state !== "destroyed"
         ? [environment.nodeDeviceId]
         : [],
     ),
@@ -210,17 +220,8 @@ function listWorkerEnvironments(context: GatewayRequestContext): WorkerEnvironme
   try {
     return context.workerEnvironmentService?.list() ?? [];
   } catch {
-    // A damaged worker store must not regress the pre-existing gateway/node inventory.
-    return [];
+    throw new Error("environment inventory unavailable");
   }
-}
-function projectWorkerMachineOption(option: WorkerMachineOption): WorkerMachineOption {
-  return {
-    id: option.id,
-    label: option.label,
-    ...(option.description === undefined ? {} : { description: option.description }),
-    ...(option.default === undefined ? {} : { default: option.default }),
-  };
 }
 export function listWorkerProfiles(context: GatewayRequestContext) {
   if (!context.workerEnvironmentService || !context.workerPlacementDispatchService) {
@@ -238,17 +239,24 @@ async function listWorkerProfilesWithMachines(context: GatewayRequestContext) {
   const summaries = listWorkerProfiles(context);
   return await Promise.all(
     summaries.map(async (summary) => {
+      const executionModes = (["worker-turn", "remote-exec"] as const).filter(
+        (mode) =>
+          context.workerEnvironmentService?.supportsExecutionMode?.(summary.id, mode) === true,
+      );
+      const executionMode = executionModes[0];
+      const resolvedSummary = Object.assign(
+        summary,
+        executionMode ? { executionMode, executionModes } : {},
+      );
       try {
         const options = await context.workerEnvironmentService?.listMachineOptions?.(summary.id);
-        const machines = options?.map(projectWorkerMachineOption) ?? [];
-        return machines.length > 0
-          ? { id: summary.id, providerId: summary.providerId, machines }
-          : summary;
+        const machines = options ?? [];
+        return machines.length > 0 ? Object.assign(resolvedSummary, { machines }) : resolvedSummary;
       } catch (error) {
         context.logGateway.warn(
           `worker machine catalog unavailable (${summary.id}): ${formatForLog(error)}`,
         );
-        return summary;
+        return resolvedSummary;
       }
     }),
   );
@@ -465,8 +473,8 @@ export const environmentsHandlers: GatewayRequestHandlers = {
       return rejectInvalid(respond, "environments.list", validateEnvironmentsListParams);
     }
     await respondUnavailableOnThrow(respond, async () => {
-      const environments = await listEnvironments(context);
       const workers = listWorkerEnvironments(context);
+      const environments = await listGatewayEnvironments(context, workers);
       const summarizedAtMs = Date.now();
       environments.push(
         ...workers.map((record) => summarizeWorkerEnvironment(record, summarizedAtMs)),
@@ -480,7 +488,7 @@ export const environmentsHandlers: GatewayRequestHandlers = {
       return rejectInvalid(respond, "environments.status", validateEnvironmentsStatusParams);
     }
     await respondUnavailableOnThrow(respond, async () => {
-      const environment = (await listEnvironments(context)).find(
+      const environment = (await listGatewayEnvironments(context)).find(
         (entry) => entry.id === params.environmentId,
       );
       if (environment) {

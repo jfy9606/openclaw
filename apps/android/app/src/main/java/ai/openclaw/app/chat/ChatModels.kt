@@ -31,6 +31,7 @@ data class ChatMessage(
   val entryId: String? = null,
   val provenance: ChatMessageProvenance? = null,
   val transcriptMarker: ChatTranscriptMarker? = null,
+  val senderLabel: String? = null,
 )
 
 data class ChatMessageProvenance(
@@ -332,6 +333,7 @@ data class ChatSessionEntry(
   val hasActiveRun: Boolean? = null,
   val activeRunIds: List<String>? = null,
   val hasActiveRunMetadata: Boolean = hasActiveRun != null || activeRunIds != null,
+  val hasActiveRunIdsMetadata: Boolean = activeRunIds != null,
   val parentSessionKey: String? = null,
   val spawnedBy: String? = null,
   val hasActiveSubagentRun: Boolean? = null,

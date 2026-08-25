@@ -56,6 +56,7 @@ import { resolveAgentPromptSurfaceForSessionKey } from "../prompt-surface.js";
 import { collectRuntimeChannelCapabilities } from "../runtime-capabilities.js";
 import { buildAgentRuntimePlan } from "../runtime-plan/build.js";
 import type { AgentRuntimePlan } from "../runtime-plan/types.js";
+import { resolveSessionPermissionExecMode } from "../session-permission-exec-mode.js";
 import { detectRuntimeShell } from "../shell-utils.js";
 import {
   filterProviderNormalizableTools,
@@ -101,6 +102,21 @@ export async function buildPreparedCompactionRuntime(prepared: DirectCompactionP
     effectiveCwd,
     effectiveSkillAgentId,
   } = prepared;
+  const permissionModes = {
+    deny: "read-only",
+    allowlist: "read-only",
+    ask: "guarded",
+    auto: "workspace",
+    full: "full",
+  } as const;
+  const mode = params.execOverrides?.mode
+    ? permissionModes[params.execOverrides.mode]
+    : (params.permissionMode ?? params.sessionEntry?.permissionMode);
+  const root = params.sessionRoot ?? params.sessionEntry?.sessionRoot;
+  const sessionPermissionPolicy = mode && root ? { mode, root } : undefined;
+  const execOverrides = sessionPermissionPolicy
+    ? { ...params.execOverrides, mode: resolveSessionPermissionExecMode(sessionPermissionPolicy) }
+    : params.execOverrides;
   let restoreSkillEnv: (() => void) | undefined;
   let bundleMcpRuntime: Awaited<ReturnType<typeof createBundleMcpToolRuntime>> | undefined;
   let bundleLspRuntime: Awaited<ReturnType<typeof createBundleLspToolRuntime>> | undefined;
@@ -310,11 +326,12 @@ export async function buildPreparedCompactionRuntime(prepared: DirectCompactionP
     const toolsRaw = toolsEnabled
       ? createOpenClawCodingTools({
           exec: {
-            ...params.execOverrides,
+            ...execOverrides,
             config: params.config,
             elevated: params.bashElevated,
           },
           sandbox,
+          sessionPermissionPolicy,
           messageProvider: resolvedMessageProvider,
           clientCaps: params.clientCaps,
           chatType: params.chatType,
@@ -506,8 +523,9 @@ export async function buildPreparedCompactionRuntime(prepared: DirectCompactionP
       config: params.config,
       agentId: sessionAgentId,
       sessionKey: params.sessionKey,
+      permissionMode: sessionPermissionPolicy?.mode,
       sandboxAvailable: sandbox?.enabled === true,
-      execOverrides: params.execOverrides,
+      execOverrides,
     });
     const sandboxInfo = buildEmbeddedSandboxInfo(
       sandbox,

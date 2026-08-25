@@ -8,6 +8,7 @@ import type {
   SessionsListResult,
   SessionsPatchResult,
 } from "../../api/types.ts";
+import { t } from "../../i18n/index.ts";
 import { formatUiError } from "../format-error.ts";
 import {
   requestSessionCreate,
@@ -16,9 +17,12 @@ import {
 } from "./create.ts";
 import type { SessionPatch, SessionPatchOptions } from "./patch.ts";
 import { requestSessionRecovery } from "./recover.ts";
+import { createSessionArchiveVisibility } from "./session-archive-visibility.ts";
 import type {
   SessionConnectionOwner,
+  SessionConnectionScope,
   SessionCreateReconciliation,
+  SessionArchiveVisibility,
   SessionDeleteBatchResult,
   SessionDeleteOptions,
   SessionDeleteOutcome,
@@ -60,6 +64,9 @@ export function createSessionMutations(host: SessionMutationsHost) {
     { token: symbol; previous: SessionPinFields; next: SessionPinFields }
   >();
   const confirmedArchives = new Map<string, ConfirmedArchiveState>();
+  const archiveVisibility = createSessionArchiveVisibility(() =>
+    host.publish({ ...host.readState() }),
+  );
   const preparedWorkSessionKeys = new Set<string>();
 
   const setModelOverride = (key: string, value: string | null | undefined) => {
@@ -128,6 +135,38 @@ export function createSessionMutations(host: SessionMutationsHost) {
     setModelOverride(normalizedKey, undefined);
   };
 
+  const reconcileConfirmedPreviousConnection = async (
+    scope: SessionConnectionScope,
+    agentId?: string | null,
+  ): Promise<boolean> => {
+    const replacement = host.connection.capture();
+    if (!replacement || replacement.client !== scope.client) {
+      return false;
+    }
+    let refreshError: string | undefined;
+    try {
+      await host.refreshReplacement(agentId);
+      refreshError = host.readState().error ?? undefined;
+    } catch (error) {
+      refreshError = formatUiError(error);
+    }
+    if (!host.connection.isCurrent(replacement)) {
+      return false;
+    }
+    host.publish(
+      {
+        ...host.readState(),
+        error: refreshError
+          ? t("connection.sessionOperationCompletedPreviousConnectionWithRefreshError", {
+              error: refreshError,
+            })
+          : t("connection.sessionOperationCompletedPreviousConnection"),
+      },
+      "operation",
+    );
+    return true;
+  };
+
   const createResult = async (
     params: SessionCreateParams = {},
     options: { reconciliation?: SessionCreateReconciliation } = {},
@@ -143,7 +182,7 @@ export function createSessionMutations(host: SessionMutationsHost) {
         ...resolveSessionCreateParams(currentSessionKey, params.agentId),
       });
       if (!host.connection.isCurrent(scope)) {
-        return null;
+        return (await reconcileConfirmedPreviousConnection(scope, params.agentId)) ? result : null;
       }
       // Creation precedes canonical rows; claim placement before any event or
       // list publication can assign this key an ordinary roster position.
@@ -166,7 +205,9 @@ export function createSessionMutations(host: SessionMutationsHost) {
       } else {
         await reconciliation;
         if (!host.connection.isCurrent(scope)) {
-          return null;
+          return (await reconcileConfirmedPreviousConnection(scope, params.agentId))
+            ? result
+            : null;
         }
       }
       return result;
@@ -341,7 +382,7 @@ export function createSessionMutations(host: SessionMutationsHost) {
       const result = await requestSessionPatch(scope.client, key, patchParams, options);
       if (!host.connection.isCurrent(scope)) {
         settleOptimisticPatch(false);
-        return null;
+        return (await reconcileConfirmedPreviousConnection(scope, options.agentId)) ? result : null;
       }
       if (archivedPresentationRow) {
         const archivedAt = result.entry?.archivedAt ?? Date.now();
@@ -377,13 +418,16 @@ export function createSessionMutations(host: SessionMutationsHost) {
         }
       } else if (patchParams.archived === false) {
         confirmedArchives.delete(normalizedKey);
+        archiveVisibility.clear(normalizedKey);
       }
       confirmPinPatch();
       if (!options.deferListRefresh) {
         await host.refreshReplacement(options.agentId);
         if (!host.connection.isCurrent(scope)) {
           settleOptimisticPatch(false);
-          return null;
+          return (await reconcileConfirmedPreviousConnection(scope, options.agentId))
+            ? result
+            : null;
         }
       }
       settleOptimisticPatch(true);
@@ -410,12 +454,23 @@ export function createSessionMutations(host: SessionMutationsHost) {
     }
     try {
       const response = await requestSessionDelete(scope.client, key, options);
-      if (!host.connection.isCurrent(scope) || !confirmsSessionDeletion(response)) {
+      if (!confirmsSessionDeletion(response)) {
         return { deleted: false };
+      }
+      if (!host.connection.isCurrent(scope)) {
+        return (await reconcileConfirmedPreviousConnection(scope, options.agentId))
+          ? {
+              deleted: true,
+              ...(response.worktreePreserved
+                ? { worktreePreserved: response.worktreePreserved }
+                : {}),
+            }
+          : { deleted: false };
       }
       const retireBeforeRevision = Date.now();
       host.retirePullRequestSummary(key);
       confirmedArchives.delete(key.trim());
+      archiveVisibility.clear(key);
       preparedWorkSessionKeys.delete(key.trim());
       host.publish({
         ...host.readState(),
@@ -425,8 +480,18 @@ export function createSessionMutations(host: SessionMutationsHost) {
       });
       setModelOverride(key, undefined);
       await host.refreshReplacement(options.agentId);
+      if (!host.connection.isCurrent(scope)) {
+        return (await reconcileConfirmedPreviousConnection(scope, options.agentId))
+          ? {
+              deleted: true,
+              ...(response.worktreePreserved
+                ? { worktreePreserved: response.worktreePreserved }
+                : {}),
+            }
+          : { deleted: false };
+      }
       return {
-        deleted: host.connection.isCurrent(scope),
+        deleted: true,
         ...(response.worktreePreserved ? { worktreePreserved: response.worktreePreserved } : {}),
       };
     } catch (error) {
@@ -456,7 +521,15 @@ export function createSessionMutations(host: SessionMutationsHost) {
       try {
         const response = await requestSessionDelete(scope.client, target.key, target);
         if (!host.connection.isCurrent(scope)) {
-          break;
+          if (confirmsSessionDeletion(response)) {
+            deleted.push(target.key);
+            if (response.worktreePreserved) {
+              preservedWorktrees.push(response.worktreePreserved);
+            }
+          }
+          return deleted.length > 0 && (await reconcileConfirmedPreviousConnection(scope))
+            ? { deleted, errors, preservedWorktrees }
+            : { deleted: [], errors: [], preservedWorktrees: [] };
         }
         if (confirmsSessionDeletion(response)) {
           const retireBeforeRevision = Date.now();
@@ -474,10 +547,16 @@ export function createSessionMutations(host: SessionMutationsHost) {
         errors.push(formatUiError(error));
       }
     }
-    if (deleted.length > 0 && host.connection.isCurrent(scope)) {
+    if (!host.connection.isCurrent(scope)) {
+      return deleted.length > 0 && (await reconcileConfirmedPreviousConnection(scope))
+        ? { deleted, errors, preservedWorktrees }
+        : { deleted: [], errors: [], preservedWorktrees: [] };
+    }
+    if (deleted.length > 0) {
       for (const key of deleted) {
         host.retirePullRequestSummary(key);
         confirmedArchives.delete(key.trim());
+        archiveVisibility.clear(key);
         preparedWorkSessionKeys.delete(key.trim());
       }
       host.publish({
@@ -488,10 +567,13 @@ export function createSessionMutations(host: SessionMutationsHost) {
         setModelOverride(key, undefined);
       }
       await host.refreshReplacement();
+      if (!host.connection.isCurrent(scope)) {
+        return (await reconcileConfirmedPreviousConnection(scope))
+          ? { deleted, errors, preservedWorktrees }
+          : { deleted: [], errors: [], preservedWorktrees: [] };
+      }
     }
-    return host.connection.isCurrent(scope)
-      ? { deleted, errors, preservedWorktrees }
-      : { deleted: [], errors: [], preservedWorktrees: [] };
+    return { deleted, errors, preservedWorktrees };
   };
 
   const reset = async (
@@ -612,6 +694,7 @@ export function createSessionMutations(host: SessionMutationsHost) {
       }
       if (!archived) {
         confirmedArchives.delete(normalizedKey);
+        archiveVisibility.clear(normalizedKey);
         return;
       }
       const previous = confirmedArchives.get(normalizedKey);
@@ -636,8 +719,12 @@ export function createSessionMutations(host: SessionMutationsHost) {
     reset,
     retireModelOverride,
     setModelOverride,
+    archiveVisibility: archiveVisibility.get,
+    setArchiveVisibility: (key: string, visibility: SessionArchiveVisibility | undefined) =>
+      archiveVisibility.set(key, visibility),
     isPreparedWorkSession: (key: string) => preparedWorkSessionKeys.has(key.trim()),
     settlePrepared(result: SessionsListResult | null) {
+      archiveVisibility.settle(result);
       for (const row of result?.sessions ?? []) {
         if (row.worktree || row.execNode) {
           preparedWorkSessionKeys.delete(row.key);
@@ -651,6 +738,7 @@ export function createSessionMutations(host: SessionMutationsHost) {
       // replacement, so it is the one that needs an explicit rollback below.
       pendingPinPatches.clear();
       confirmedArchives.clear();
+      archiveVisibility.clearAll();
       preparedWorkSessionKeys.clear();
       const state = host.readState();
       if (Object.keys(state.modelOverrides).length > 0) {
@@ -661,6 +749,7 @@ export function createSessionMutations(host: SessionMutationsHost) {
       pendingModelPatches.clear();
       pendingPinPatches.clear();
       confirmedArchives.clear();
+      archiveVisibility.clearAll();
       preparedWorkSessionKeys.clear();
     },
   };

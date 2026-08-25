@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
   hasConfiguredChannelsForReadOnlyScope: vi.fn(),
   resolveCommandConfigWithSecrets: vi.fn(),
   getStatusCommandSecretTargetIds: vi.fn(),
-  readBestEffortConfigSnapshot: vi.fn(),
+  readCommandConfigSnapshot: vi.fn(),
   resolveGatewayPort: vi.fn(),
   resolveOsSummary: vi.fn(),
   createStatusScanCoreBootstrap: vi.fn(),
@@ -27,8 +27,11 @@ vi.mock("../cli/command-secret-targets.js", () => ({
   getStatusCommandSecretTargetIds: mocks.getStatusCommandSecretTargetIds,
 }));
 
+vi.mock("../cli/command-config-snapshot.js", () => ({
+  readCommandConfigSnapshot: mocks.readCommandConfigSnapshot,
+}));
+
 vi.mock("../config/config.js", () => ({
-  readBestEffortConfigSnapshot: mocks.readBestEffortConfigSnapshot,
   resolveGatewayPort: mocks.resolveGatewayPort,
 }));
 
@@ -90,9 +93,12 @@ describe("collectStatusScanOverview", () => {
 
     mocks.hasConfiguredChannelsForReadOnlyScope.mockReturnValue(true);
     mocks.getStatusCommandSecretTargetIds.mockReturnValue([]);
-    mocks.readBestEffortConfigSnapshot.mockResolvedValue({
-      config: { session: {} },
-      sourceConfig: { session: { raw: true } },
+    mocks.readCommandConfigSnapshot.mockResolvedValue({
+      snapshot: {
+        valid: true,
+        runtimeConfig: { session: {} },
+        sourceConfig: { session: { raw: true } },
+      },
     });
     mocks.resolveCommandConfigWithSecrets.mockResolvedValue({
       resolvedConfig: { session: {} },
@@ -146,10 +152,7 @@ describe("collectStatusScanOverview", () => {
       useGatewayCallOverridesForChannelsStatus: true,
     });
 
-    expect(mocks.readBestEffortConfigSnapshot).toHaveBeenCalledWith({
-      observe: false,
-      skipPluginValidation: undefined,
-    });
+    expect(mocks.readCommandConfigSnapshot).toHaveBeenCalledOnce();
     expect(mocks.callGateway).toHaveBeenCalledTimes(2);
     const channelsRequest = gatewayRequest("channels.status");
     expect(channelsRequest?.url).toBe("ws://127.0.0.1:18789");
@@ -219,5 +222,58 @@ describe("collectStatusScanOverview", () => {
     expect(mocks.callGateway).not.toHaveBeenCalled();
     expect(result.channelsStatus).toBeNull();
     expect(result.channelIssues).toStrictEqual([]);
+  });
+
+  it("returns the base overview when a reachable gateway lacks read scope", async () => {
+    mocks.createStatusScanCoreBootstrap.mockResolvedValueOnce({
+      tailscaleMode: "off",
+      tailscaleDnsPromise: Promise.resolve(null),
+      updatePromise: Promise.resolve({ installKind: "git" }),
+      agentStatusPromise: Promise.resolve({
+        defaultId: "main",
+        agents: [],
+        totalSessions: 0,
+        bootstrapPendingCount: 0,
+      }),
+      gatewayProbePromise: Promise.resolve({
+        gatewayConnection: {
+          url: "ws://127.0.0.1:18789",
+          urlSource: "default",
+        },
+        remoteUrlMissing: false,
+        gatewayMode: "local",
+        gatewayProbeAuth: {},
+        gatewayProbeAuthWarning: undefined,
+        gatewayProbe: {
+          ok: false,
+          connectLatencyMs: 12,
+          error: "missing scope: operator.read",
+          auth: {
+            role: "operator",
+            scopes: [],
+            capability: "connected_no_operator_scope",
+          },
+        },
+        gatewayReachable: true,
+        gatewaySelf: null,
+      }),
+      resolveTailscaleHttpsUrl: vi.fn(async () => null),
+      skipColdStartNetworkChecks: false,
+    });
+    mocks.callGateway.mockRejectedValueOnce(new Error("missing scope: operator.read"));
+
+    const result = await collectStatusScanOverview({
+      commandName: "status",
+      opts: {},
+      showSecrets: false,
+      includeChannelsData: false,
+    });
+
+    expect(result.gatewaySnapshot.gatewayReachable).toBe(true);
+    expect(result.gatewaySnapshot.gatewayProbe).toMatchObject({
+      ok: false,
+      error: "missing scope: operator.read",
+    });
+    expect(result.runtimeDegradation).toBeNull();
   });
 });

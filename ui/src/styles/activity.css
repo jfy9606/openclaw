@@ -61,9 +61,6 @@ openclaw-activity-page {
   height: 100%;
   min-height: 0;
   overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--card);
 }
 
 .activity-feed__toolbar {
@@ -72,8 +69,6 @@ openclaw-activity-page {
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--border);
-  background: color-mix(in srgb, var(--bg-elevated) 58%, transparent);
 }
 
 .activity-feed__search {
@@ -102,12 +97,14 @@ openclaw-activity-page {
 
 .activity-feed__time-filter {
   flex: 0 0 auto;
+  flex-wrap: nowrap;
 }
 
 .activity-feed__people-control {
   position: relative;
   display: flex;
   align-items: center;
+  margin-left: auto;
 }
 
 .activity-feed__people-trigger,
@@ -118,7 +115,7 @@ openclaw-activity-page {
 
 .activity-feed__people-trigger {
   min-width: 64px;
-  max-width: 220px;
+  max-width: min(220px, 30vw);
   padding: 3px 10px;
 }
 
@@ -312,13 +309,94 @@ openclaw-activity-page {
   text-decoration: none;
 }
 
-.activity-feed__session + .activity-feed__session {
+.activity-feed__session-row {
+  position: relative;
+}
+
+.activity-feed__session-row + .activity-feed__session-row,
+.activity-feed__automation-group + .activity-feed__session-row,
+.activity-feed__session-row + .activity-feed__automation-group {
   border-top: 1px solid color-mix(in srgb, var(--border) 62%, transparent);
 }
 
+.activity-feed__automation-group {
+  width: 100%;
+  border: 0;
+  color: var(--muted);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: var(--cursor-action);
+}
+
+.activity-feed__automation-group:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.activity-feed__automation-group-icon,
+.activity-feed__automation-group-chevron {
+  display: inline-flex;
+}
+
+.activity-feed__automation-group-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.activity-feed__automation-group-chevron svg {
+  width: 18px;
+  height: 18px;
+  transition: transform var(--duration-fast) ease;
+}
+
+.activity-feed__automation-group[aria-expanded="true"]
+  .activity-feed__automation-group-chevron
+  svg {
+  transform: rotate(90deg);
+}
+
 .activity-feed__session:hover,
-.activity-feed__session:focus-visible {
+.activity-feed__session:focus-visible,
+.activity-feed__session-row:hover .activity-feed__session,
+.activity-feed__session-row:focus-within .activity-feed__session {
   background: var(--bg-hover);
+  text-decoration: none;
+}
+
+.activity-feed__session-row:has(.activity-feed__inspect-run) .activity-feed__session {
+  padding-right: 118px;
+}
+
+.activity-feed__inspect-run {
+  position: absolute;
+  top: 50%;
+  right: var(--space-4);
+  z-index: 1;
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  opacity: 0;
+  color: var(--muted);
+  background: var(--bg-elevated);
+  font-size: var(--control-ui-text-xs);
+  line-height: 1;
+  text-decoration: none;
+  pointer-events: none;
+  translate: 0 -50%;
+  transition: opacity var(--duration-fast) ease;
+}
+
+.activity-feed__session-row:hover .activity-feed__inspect-run,
+.activity-feed__session-row:focus-within .activity-feed__inspect-run {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.activity-feed__inspect-run:hover,
+.activity-feed__inspect-run:focus-visible {
+  border-color: var(--border-strong);
+  color: var(--text);
   text-decoration: none;
 }
 
@@ -327,6 +405,21 @@ openclaw-activity-page {
   height: 26px;
   border-color: var(--card);
   font-size: 9px;
+}
+
+.activity-feed__session-avatar {
+  position: relative;
+  display: inline-flex;
+}
+
+.activity-feed__run-dot {
+  top: -2px;
+  right: auto;
+  bottom: auto;
+  left: -2px;
+  border-color: var(--card);
+  background: var(--accent);
+  animation: pulse-subtle 1.8s ease-in-out infinite;
 }
 
 .activity-feed__session-main {
@@ -358,10 +451,44 @@ openclaw-activity-page {
   white-space: nowrap;
 }
 
+.activity-feed__session-source {
+  white-space: nowrap;
+}
+
+.activity-feed__session-headline,
+.activity-feed__session-owner {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-feed__session-headline[data-health="grinding"] {
+  color: var(--accent);
+}
+
+.activity-feed__session-headline[data-health="stuck"],
+.activity-feed__session-headline[data-health="waiting-on-user"] {
+  color: var(--warn);
+}
+
+.activity-feed__session-headline[data-health="failed"] {
+  color: var(--danger);
+}
+
 .activity-feed__session-time {
+  display: flex;
+  max-width: 260px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
   color: var(--muted);
   font-size: var(--control-ui-text-sm);
   white-space: nowrap;
+}
+
+.activity-feed__session-owner {
+  max-width: 140px;
 }
 
 .activity-feed__identity {
@@ -429,6 +556,25 @@ openclaw-activity-page {
   font-weight: 600;
 }
 
+.activity-feed__device-location {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* The credit is a license term for the default database, so it stays visible
+   next to the value it describes rather than living in a settings page. */
+.activity-feed__device-attribution {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: var(--control-ui-text-xs);
+}
+
+.activity-feed__device-attribution:hover,
+.activity-feed__device-attribution:focus-visible {
+  color: var(--text);
+}
+
 .activity-feed__viewing {
   margin-top: var(--space-4);
 }
@@ -455,6 +601,58 @@ openclaw-activity-page {
   font-size: var(--control-ui-text-sm);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+.activity-live-toolbar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+}
+
+.activity-live-autofollow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--muted);
+  font-size: var(--control-ui-text-sm);
+  white-space: nowrap;
+}
+
+.activity-live-filter-trigger {
+  width: var(--settings-control-height);
+  min-width: var(--settings-control-height);
+  height: var(--settings-control-height);
+  padding: 0;
+}
+
+.activity-live-filter-trigger svg {
+  width: 16px;
+  height: 16px;
+}
+
+.activity-live-filter-trigger.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-subtle);
+}
+
+.activity-live-filter-popover {
+  --max-width: min(280px, calc(100vw - 32px));
+}
+
+.activity-live-filter-popover::part(body) {
+  padding: 0;
+}
+
+.activity-live-filter-popover__panel {
+  width: min(260px, calc(100vw - 32px));
+  padding: var(--space-3);
+}
+
+.activity-live-filter-popover__panel .settings-select {
+  width: 100%;
 }
 
 .activity-status-filters {
@@ -567,9 +765,36 @@ openclaw-activity-page {
 
 .activity-entry__tool,
 .activity-entry__text,
-.activity-entry__facts span {
+.activity-entry__facts span,
+.activity-entry__facts a {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.activity-entry__run-link {
+  color: inherit;
+}
+
+.activity-run-inspector-back {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  color: var(--muted);
+  font-size: var(--control-ui-text-sm);
+  text-decoration: none;
+}
+
+.activity-run-inspector-back:hover,
+.activity-run-inspector-back:focus-visible {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.activity-run-inspector-back svg {
+  width: 16px;
+  height: 16px;
 }
 
 .activity-entry__text {
@@ -631,6 +856,28 @@ openclaw-activity-page {
     order: -1;
   }
 
+  .activity-live-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .activity-live-search {
+    flex-basis: 100%;
+    order: -1;
+  }
+
+  .activity-live-filter-trigger {
+    margin-left: auto;
+  }
+
+  .activity-feed__time-filter .settings-segmented__btn {
+    font-size: 0;
+  }
+
+  .activity-feed__time-filter .settings-segmented__btn::after {
+    content: attr(data-compact-label);
+    font-size: var(--control-ui-text-sm);
+  }
+
   .activity-feed__main {
     overflow: visible;
     padding: var(--space-4);
@@ -638,6 +885,10 @@ openclaw-activity-page {
 
   .activity-feed__session {
     grid-template-columns: 28px minmax(0, 1fr);
+  }
+
+  .activity-feed__automation-group {
+    grid-template-columns: 28px minmax(0, 1fr) auto;
   }
 
   .activity-feed__session-time {
@@ -661,6 +912,13 @@ openclaw-activity-page {
 
   .activity-stream {
     max-height: calc(100vh - 360px);
+  }
+}
+
+@media (pointer: coarse) {
+  .activity-feed__inspect-run {
+    opacity: 1;
+    pointer-events: auto;
   }
 }
 

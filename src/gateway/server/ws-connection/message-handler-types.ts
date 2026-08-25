@@ -34,6 +34,7 @@ export type GatewayWsMessageHandlerParams = {
   socket: WebSocket;
   upgradeReq: IncomingMessage;
   connId: string;
+  bootId: string;
   remoteAddr?: string;
   remotePort?: number;
   localAddr?: string;
@@ -57,6 +58,7 @@ export type GatewayWsMessageHandlerParams = {
   isStartupPending?: () => boolean;
   isControlUiDeviceAuthMigrationPending?: () => boolean;
   isControlUiInsecureAuthConfigured?: () => boolean;
+  isPendingWorkerNodeSetup?: (setupId: string, deviceId: string) => boolean;
   gatewayMethods: string[];
   events: string[];
   extraHandlers: GatewayRequestHandlers;
@@ -129,6 +131,7 @@ export type AuthenticatedGatewayConnect = {
   isWebchat: boolean;
   isNativeAppUi: boolean;
   controlUiAuthPolicy: ControlUiAuthPolicy;
+  startupPending: boolean;
   device: ConnectParams["device"] | null | undefined;
   devicePublicKey: string | null;
   deviceAuthPayloadVersion: "v2" | "v3" | null;

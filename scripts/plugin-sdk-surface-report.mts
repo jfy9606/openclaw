@@ -148,9 +148,9 @@ const defaultPublicDeprecatedExportsByEntrypointBudget = Object.freeze({
   // +4: session-write lease no-op compatibility stubs through the 2026.10 train.
   // +4: legacy AgentHarness, attempt, embedded-run, and side-question contracts remain
   // deprecated while external harnesses migrate to required-capability V2 contracts.
+  // +1: bounded structured-input compiler/executor for native harness protocol adapters.
   "agent-harness": 2,
-  "agent-harness-runtime": 12,
-  "command-auth": 78,
+  "agent-harness-runtime": 12,  "command-auth": 78,
   discord: 47,
   // +4: deprecated media projection type, builder, and turn aliases.
   "channel-inbound": 18,
@@ -197,8 +197,7 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: canonical Computer Use wire contract and node-host provider seam.
       // +2: web-model transport streams and AskOnce multi-query plugin entrypoints.
       // +1: restore browser web-auth helpers for zero-token browser capture flows.
-      156,
-      env,
+      156,      env,
     ),
     publicExports: readPluginSdkSurfaceBudgetEnv(
       "OPENCLAW_PLUGIN_SDK_MAX_PUBLIC_EXPORTS",
@@ -273,7 +272,6 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: add the account-aware native approval request selector.
       // +3: add canonical coercion exports while retaining the shipped asString compatibility name.
       // +2: add high-use coercion primitives while retaining shipped object-record exports.
-<<<<<<< HEAD
       // +2: channel-neutral location and provider-update hook contracts.
       // +1: QQBot 2.0.1 operator-approval Gateway client compatibility export.
       // +2: narrow channel agent-run terminal reader and outcome contract.
@@ -290,8 +288,7 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // -1: remove the orphan diagnostic traceparent propagation export.
       // +13: web-model stream factory contracts and AskOnce plugin runtime contracts.
       // +9: browser web-auth config, profile, headers, CDP URL, launch, stop, and types.
-      4351,
-      env,
+      4351,      env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
       "OPENCLAW_PLUGIN_SDK_MAX_PUBLIC_FUNCTION_EXPORTS",
@@ -353,7 +350,6 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: add the account-aware native approval request selector.
       // +3: add canonical coercion exports while retaining the shipped asString compatibility name.
       // +2: add high-use callable coercion primitives while retaining shipped object-record exports.
-<<<<<<< HEAD
       // +1: QQBot 2.0.1 operator-approval Gateway client compatibility export.
       // +1: narrow channel agent-run terminal reader.
       // +5: narrow string, record, and error coercion helpers.

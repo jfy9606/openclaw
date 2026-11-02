@@ -1,7 +1,6 @@
-// WebSocket connect policy resolves Control UI pairing bypasses and missing-device identity decisions.
 import type { ConnectParams } from "../../../../packages/gateway-protocol/src/index.js";
-import type { GatewayRole } from "../../role-policy.js";
 import { roleCanSkipDeviceIdentity } from "../../role-policy.js";
+import type { GatewayRole } from "../../role-policy.types.js";
 
 export type ControlUiPairingKind = "tailscale-device" | "auth-none" | null;
 
@@ -49,18 +48,6 @@ export function isTrustedProxyControlUiOperatorAuth(params: {
   );
 }
 
-// Fork addition: gateway.controlUi.allowInsecureAuth opts into device-less
-// Control UI auth over plain HTTP for LAN/remote clients. Upstream retired the
-// key and hard-rejects insecure Control UI sessions; this opt-in restores the
-// pre-retirement escape hatch explicitly (never on by default).
-export function shouldAllowInsecureControlUiAuth(params: {
-  hasDevice: boolean;
-  isControlUi: boolean;
-  insecureAuthConfigured: boolean;
-}): boolean {
-  return !params.hasDevice && params.isControlUi && params.insecureAuthConfigured;
-}
-
 type MissingDeviceIdentityDecision =
   | { kind: "allow" }
   | { kind: "reject-control-ui-insecure-auth" }
@@ -88,7 +75,6 @@ export function evaluateMissingDeviceIdentity(params: {
   sharedAuthOk: boolean;
   authOk: boolean;
   hasSharedAuth: boolean;
-  isLocalClient: boolean;
 }): MissingDeviceIdentityDecision {
   if (params.hasDeviceIdentity) {
     return { kind: "allow" };

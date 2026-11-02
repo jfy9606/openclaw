@@ -3,6 +3,15 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        # Skill toolchains that upstream's lean runtime image omits. The image
+        # already exposes OPENCLAW_IMAGE_APT_PACKAGES for exactly this, and Debian
+        # trixie ships golang, so no fork-only toolchain installer is needed.
+        OPENCLAW_IMAGE_APT_PACKAGES: ${OPENCLAW_IMAGE_APT_PACKAGES:-golang}
+        # npmjs is throttled from this network; the Dockerfile retries NPM_REGISTRY
+        # then NPM_REGISTRY_BACKUP, so pin the mirror first for faster builds.
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
+        NPM_REGISTRY_BACKUP: ${NPM_REGISTRY_BACKUP:-https://registry.npmjs.org}
     image: ${OPENCLAW_IMAGE:-openclaw:local}
     env_file:
       - path: .env

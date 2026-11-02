@@ -22,12 +22,15 @@ services:
       dockerfile: Dockerfile
       target: build
       args:
-        # Primary registry override: npmjs is throttled from this network and
-        # the Dockerfile's backup-registry retry path is broken (a second
-        # `pnpm config set --global` fails on the global-bin-dir PATH check),
-        # so pin the mirror as primary.
+        # npmjs is throttled from this network, so pin the mirror as primary.
+        # The Dockerfile now retries per install through npm_config_registry; the
+        # old backup path that failed (a second `pnpm config set --global` dying on
+        # the global-bin-dir PATH check) no longer exists.
         NPM_REGISTRY: https://registry.npmmirror.com
         NPM_REGISTRY_BACKUP: https://registry.npmjs.org
+        # Skill toolchains this dev image needs. Upstream's apt hook lives in the
+        # runtime stage, so the build stage honors the same ARG name for --target build.
+        OPENCLAW_IMAGE_APT_PACKAGES: golang
     image: openclaw:dev
     restart: "no"
     command:

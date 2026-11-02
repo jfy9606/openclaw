@@ -158,6 +158,18 @@ RUN --mount=type=cache,id=openclaw-pnpm-store,target=/root/.local/share/pnpm/sto
 
 RUN sh scripts/docker/verify-native-addons.sh
 
+# Fork addition: dev containers build with --target build, so this stage honors the
+# same upstream OPENCLAW_IMAGE_APT_PACKAGES contract the runtime stage exposes; without
+# it, skill toolchains (golang et al.) never reach the dev image. Kept ahead of COPY . .
+# so a source change does not invalidate the apt layer.
+ARG OPENCLAW_IMAGE_APT_PACKAGES
+RUN --mount=type=cache,id=openclaw-trixie-apt-cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,id=openclaw-trixie-apt-lists,target=/var/lib/apt,sharing=locked \
+    if [ -n "$OPENCLAW_IMAGE_APT_PACKAGES" ]; then \
+      apt-get update && \
+      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $OPENCLAW_IMAGE_APT_PACKAGES; \
+    fi
+
 # Public source provenance supplied by release automation or local setup. Keep
 # these after the dependency layer so a new timestamp does not invalidate install.
 ARG GIT_COMMIT=""
@@ -518,6 +530,4 @@ RUN COREPACK_ENABLE_NETWORK=0 PNPM_CONFIG_OFFLINE=true pnpm --version
 HEALTHCHECK --interval=3m --timeout=10s --start-period=15s --retries=3 \
   CMD ["node", "dist/docker-healthcheck.js"]
 ENTRYPOINT ["tini", "-s", "--", "node", "/app/docker-entrypoint.mjs"]
-# Fork addition: this fork's compose deployments start the container before any
-# config exists, so the gateway must tolerate an unconfigured first boot.
-CMD ["node", "openclaw.mjs", "gateway", "--allow-unconfigured"]
+CMD ["node", "openclaw.mjs", "gateway"]
